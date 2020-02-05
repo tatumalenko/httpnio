@@ -1,0 +1,3 @@
+# ./httpc post -v -d '{ "hey": "there" }' https://postman-echo.com/post
+# ./httpc 'post -v -d { "hey": "there" } https://postman-echo.com/post?'
+echo "$@" && ./gradlew build && java -jar build/libs/httpsocketclient.jar httpc "$@"

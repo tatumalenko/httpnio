@@ -13,7 +13,7 @@ plugins {
 }
 
 application {
-    mainClassName = "httpsocketclient.cli.CLI"
+    mainClassName = "httpsocketclient.EntryPoint"
 }
 
 repositories {
@@ -26,6 +26,7 @@ dependencies {
 
     // Use JUnit Jupiter API for testing.
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.5.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params:5.5.1'
 
     // Use JUnit Jupiter Engine for testing.
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.5.1'
@@ -40,27 +41,36 @@ test {
     useJUnitPlatform()
 }
 
-tasks.withType(JavaCompile) {
-    configure(options) {
-        options.compilerArgs.add('--enable-preview')
-        options.fork = true
-        options.forkOptions.executable = '/Users/tatumalenko/.sdkman/candidates/java/13.0.1.hs-adpt/bin/javac'
+jar {
+    manifest {
+        attributes 'Main-Class': 'httpsocketclient.EntryPoint'
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
 }
 
-tasks.withType(JavaExec) {
-    configure(jvmArgs) {
-        jvmArgs.add('--enable-preview')
-    }
-}
+//tasks.withType(JavaCompile) {
+//    configure(options) {
+//        options.compilerArgs.add('--enable-preview')
+//        options.fork = true
+//        options.forkOptions.executable = '/Users/tatumalenko/.sdkman/candidates/java/13.0.1.hs-adpt/bin/javac'
+//    }
+//}
 
-run {
-    jvmArgs '--enable-preview'
-}
-
-test {
-    jvmArgs '--enable-preview'
-}
+//tasks.withType(JavaExec) {
+//    configure(jvmArgs) {
+//        jvmArgs.add('--enable-preview')
+//    }
+//}
+//
+//run {
+//    jvmArgs '--enable-preview'
+//}
+//
+//test {
+//    jvmArgs '--enable-preview'
+//}
 
 //tasks.named(':ExpressionProblem.main()')
 //

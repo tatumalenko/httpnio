@@ -1,8 +1,7 @@
 package httpsocketclient.cli.parse;
 
+import io.vavr.control.Either;
 import io.vavr.control.Try;
-import lombok.AllArgsConstructor;
-import lombok.Data;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
@@ -30,62 +29,37 @@ public interface Parser {
         return null;
     }
 
-    static <T> T parse(final Class<T> clazz, final String in) {
-
-        final T tokenized = tokenize(clazz, in);
-
-
-        return tokenized;
+    static <T> Try<Either<String, T>> parse(final Class<T> clazz, final String in) {
+        return Try.of(() -> tokenize(clazz, in));
     }
 
-    @Data
-    @AllArgsConstructor
-    class Tokenized {
-        private CLI.Command command;
-        private CLI.SubCommand subCommand;
-        private List<CLI.Flag> flags;
-        private List<CLI.Option> options;
-        private Map<CLI.Argument, String> arguments;
-
-        @Override
-        public String toString() {
-            return "Command: " + command.name()
-                + "\nsubCommand: " + subCommand.name()
-                + "\nsubCommand.argument: " + subCommand.argument().name()
-                + "\nflags: " + flags.stream().map(e -> e.name()).collect(Collectors.joining(", "))
-                + "\noptions: " + options.stream().map(e -> e.name()).collect(Collectors.joining(", "))
-                + "\narguments: " + arguments.entrySet().stream().map(entry -> entry.getKey().name() + ": " + entry.getValue()).collect(Collectors.joining("; "));
-        }
-    }
-
-    static <T> T tokenize(final Class<T> clazz, final String in) {
+    static <T> Either<String, T> tokenize(final Class<T> clazz, final String in) throws ParseError {
         try {
             final T instance = make(clazz);
 
-            final CLI.Command command;
-            final CLI.SubCommand subCommand;
-            CLI.Argument argument = null;
-            final List<CLI.Flag> flags = new ArrayList<>();
-            final List<CLI.Option> options = new ArrayList<>();
-            final Map<CLI.Argument, String> arguments = new HashMap<>();
+            final Command command;
+            final SubCommand subCommand;
+            Argument argument = null;
+            final List<Flag> flags = new ArrayList<>();
+            final List<Option> options = new ArrayList<>();
+            final Map<Argument, String> arguments = new HashMap<>();
 
-            final var parser = new Checker(in);
+            final var parser = new Checker<>(clazz);
             final var lexemes = splitBySpaceOrSingleQuote(in);
 
             command = parser.command(lexemes.get(0));
             if (command == null) {
-                throw new RuntimeException(lexemes.get(0) + " is not a valid command!");
+                throw new ParseError(lexemes.get(0) + " is not a valid command!");
             }
             lexemes.remove(0);
 
             if (lexemes.get(0).equals("help")) {
-                System.out.println(parser.help());
-                System.exit(0);
+                return Either.left(parser.help());
             }
 
             subCommand = parser.subCommand(lexemes.get(0));
             if (subCommand == null) {
-                throw new RuntimeException(lexemes.get(0) + " is not a valid subcommand!");
+                throw new ParseError(lexemes.get(0) + " is not a valid subcommand!");
             }
             lexemes.remove(0);
 
@@ -94,8 +68,7 @@ public interface Parser {
                 final var nextLexeme = i <= lexemes.size() - 2 ? lexemes.get(i + 1) : null;
 
                 if (lexeme.equals("help")) {
-                    System.out.println(parser.help(subCommand));
-                    System.exit(0);
+                    return Either.left(parser.help(subCommand));
                 }
 
                 if (parser.isFlag(lexeme)) {
@@ -104,12 +77,12 @@ public interface Parser {
                 } else if (parser.isOption(lexeme)) {
                     final var option = parser.option(lexeme);
                     if (nextLexeme == null) {
-                        throw new RuntimeException("No valid argument was found following the " + option.name() + " option!");
+                        throw new ParseError("No valid argument was found following the " + option.name() + " option!");
                     }
 
                     final var arg = parser.argument(option, nextLexeme);
                     if (arg == null) {
-                        throw new RuntimeException(nextLexeme + " is not a valid argument for option " + option.name() + "!");
+                        throw new ParseError(nextLexeme + " is not a valid argument for option " + option.name() + "!");
                     }
 
                     options.add(option);
@@ -118,6 +91,7 @@ public interface Parser {
                     if (clazz.getDeclaredField(option.name()).getType() == String.class) {
                         setField(instance, clazz, option.name(), nextLexeme);
                     } else if (clazz.getDeclaredField(option.name()).getType() == List.class) {
+                        @SuppressWarnings("unchecked")
                         List<String> value = (List<String>) getField(instance, clazz, option.name());
                         value = value == null ? new ArrayList<>() : value;
                         value.add(nextLexeme);
@@ -125,33 +99,28 @@ public interface Parser {
                     } else {
                         System.out.println("Warning: " + option.name() + " was neither a String or List<String>, and hence could not be set.");
                     }
-
-
                     i++;
                 } else if (parser.isArgument(subCommand, lexeme)) {
                     if (argument != null) {
-                        throw new RuntimeException("More than one argument for sub-command " + subCommand.name() + " was found!");
+                        throw new ParseError("More than one argument for sub-command " + subCommand.name() + " was found!");
                     }
                     argument = parser.argument(subCommand, lexeme);
                     if (argument == null) {
-                        throw new RuntimeException(lexeme + " is not a valid subcommand argument for + " + subCommand.name() + "!");
+                        throw new ParseError(lexeme + " is not a valid subcommand argument for + " + subCommand.name() + "!");
                     }
 
                     arguments.put(argument, lexeme);
 
                     setField(instance, clazz, subCommand.name(), lexeme);
                 } else {
-                    throw new RuntimeException(lexeme + " is not a valid flag or option!");
+                    throw new ParseError(lexeme + " is not a valid flag or option!");
                 }
             }
 
-//            return new Tokenized(command, subCommand, flags, options, arguments);
-            return instance;
+            return Either.right(instance);
         } catch (final Exception e) {
-            e.printStackTrace();
+            throw new ParseError(e.getMessage(), e);
         }
-
-        return null;
     }
 
     static <T> void setField(final T instance, final Class<T> clazz, final String name, final Object value) throws NoSuchFieldException, IllegalAccessException {
@@ -166,54 +135,27 @@ public interface Parser {
         return field.get(instance);
     }
 
-    class Checker {
-        CLI.Command command;
+    class Checker<T> {
+        Command command;
 
-        List<CLI.SubCommand> subCommands;
+        List<SubCommand> subCommands;
 
-        List<CLI.Flag> flags;
+        List<Flag> flags;
 
-        List<CLI.Option> options;
+        List<Option> options;
 
-        public Checker(final String in) {
-            final List<Class<?>> cmdClasses = Thread.getAllStackTraces()
-                .values()
-                .stream()
-                .flatMap(Arrays::stream)
-                .map(e -> Try.of(() -> Class.forName(e.getClassName())).getOrNull())
-                .filter(e -> !Arrays.asList(e.getAnnotationsByType(CLI.Command.class)).isEmpty())
-                .collect(Collectors.toList());
-
-            final String cmdIn = in.split("\\s+")[0];
-            final List<CLI.Command> commands = cmdClasses.stream()
-                .map(e -> {
-                    var cmdClass = e.getAnnotationsByType(CLI.Command.class);
-                    return cmdClass.length > 0 ? cmdClass[0] : null;
-                })
-                .filter(e -> e != null)
-                .collect(Collectors.toList());
-
-            final Class<?> cmdClass = cmdClasses.stream()
-                .filter(e -> Arrays.asList(e.getAnnotationsByType(CLI.Command.class)[0].name()).contains(cmdIn))
-                .findFirst()
-                .orElse(null);
-
-            command = commands.stream()
-                .filter(e -> Arrays.asList(cmdClass.getAnnotationsByType(CLI.Command.class)[0].name()).contains(cmdIn))
-                .findFirst()
-                .orElse(null);
-
-            subCommands = annotationsWithType(cmdClass, CLI.SubCommand.class);
-            flags = annotationsWithType(cmdClass, CLI.Flag.class);
-            options = annotationsWithType(cmdClass, CLI.Option.class);
-
+        public Checker(final Class<T> cmdClass) {
+            command = cmdClass.getAnnotationsByType(Command.class)[0];
+            subCommands = annotationsWithType(cmdClass, SubCommand.class);
+            flags = annotationsWithType(cmdClass, Flag.class);
+            options = annotationsWithType(cmdClass, Option.class);
         }
 
         boolean isCommand(final String in) {
             return command(in) != null;
         }
 
-        CLI.Command command(final String in) {
+        Command command(final String in) {
             return command;
         }
 
@@ -221,7 +163,7 @@ public interface Parser {
             return subCommand(in) != null;
         }
 
-        CLI.SubCommand subCommand(final String in) {
+        SubCommand subCommand(final String in) {
             return subCommands.stream().filter(e -> Arrays.asList(e.name()).contains(in)).findFirst().orElse(null);
         }
 
@@ -229,7 +171,7 @@ public interface Parser {
             return flag(in) != null;
         }
 
-        CLI.Flag flag(final String in) {
+        Flag flag(final String in) {
             return flags.stream().filter(e -> Arrays.asList(e.alias()).contains(in)).findFirst().orElse(null);
         }
 
@@ -237,23 +179,23 @@ public interface Parser {
             return option(in) != null;
         }
 
-        CLI.Option option(final String in) {
+        Option option(final String in) {
             return options.stream().filter(e -> Arrays.asList(e.alias()).contains(in)).findFirst().orElse(null);
         }
 
-        boolean isArgument(final CLI.Option option, final String in) {
+        boolean isArgument(final Option option, final String in) {
             return argument(option, in) != null;
         }
 
-        boolean isArgument(final CLI.SubCommand subCommand, final String in) {
+        boolean isArgument(final SubCommand subCommand, final String in) {
             return argument(subCommand, in) != null;
         }
 
-        CLI.Argument argument(final CLI.Option option, final String in) {
+        Argument argument(final Option option, final String in) {
             return in.matches(option.argument().regex()) ? option.argument() : null;
         }
 
-        CLI.Argument argument(final CLI.SubCommand subCommand, final String in) {
+        Argument argument(final SubCommand subCommand, final String in) {
             return in.matches(subCommand.argument().regex()) ? subCommand.argument() : null;
         }
 
@@ -272,7 +214,7 @@ public interface Parser {
             return sb;
         }
 
-        String help(final CLI.SubCommand subCommand) {
+        String help(final SubCommand subCommand) {
             var sb = "\nSubcommand (" + subCommand.name() + "): " + subCommand.description();
 
             sb += "\nUsage:\n   " + command.name() + " " + subCommand.name() + " [options] " + subCommand.argument().name();
