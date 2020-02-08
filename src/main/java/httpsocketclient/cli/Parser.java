@@ -1,4 +1,4 @@
-package httpsocketclient.cli.parse;
+package httpsocketclient.cli;
 
 import io.vavr.control.Either;
 import io.vavr.control.Try;
@@ -6,60 +6,49 @@ import io.vavr.control.Try;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.regex.MatchResult;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-public interface Parser {
+public final class Parser<T> {
+    Class<T> clazz;
+    Checker<T> checker;
 
-    static <T> T make(final Class<T> clazz) {
-        try {
-            return clazz.getDeclaredConstructor().newInstance();
-        } catch (final InstantiationException e) {
-            e.printStackTrace();
-        } catch (final IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (final NoSuchMethodException e) {
-            e.printStackTrace();
-        } catch (final InvocationTargetException e) {
-            e.printStackTrace();
-        }
-
-        return null;
+    public Parser(final Class<T> clazz) {
+        this.clazz = clazz;
+        checker = new Checker<>(clazz);
     }
 
-    static <T> Try<Either<String, T>> parse(final Class<T> clazz, final String in) {
-        return Try.of(() -> tokenize(clazz, in));
+    public Try<Either<String, T>> parse(final String in) {
+        return Try.of(() -> tokenize(in));
     }
 
-    static <T> Either<String, T> tokenize(final Class<T> clazz, final String in) throws ParseError {
+    private Either<String, T> tokenize(final String in) throws ParseError {
         try {
             final T instance = make(clazz);
 
             final Command command;
             final SubCommand subCommand;
             Argument argument = null;
-            final List<Flag> flags = new ArrayList<>();
-            final List<Option> options = new ArrayList<>();
-            final Map<Argument, String> arguments = new HashMap<>();
 
-            final var parser = new Checker<>(clazz);
             final var lexemes = splitBySpaceOrSingleQuote(in);
 
-            command = parser.command(lexemes.get(0));
+            command = checker.command(lexemes.get(0));
             if (command == null) {
                 throw new ParseError(lexemes.get(0) + " is not a valid command!");
             }
             lexemes.remove(0);
 
             if (lexemes.get(0).equals("help")) {
-                return Either.left(parser.help());
+                return Either.left(checker.help());
             }
 
-            subCommand = parser.subCommand(lexemes.get(0));
+            subCommand = checker.subCommand(lexemes.get(0));
             if (subCommand == null) {
-                throw new ParseError(lexemes.get(0) + " is not a valid subcommand!");
+                throw new ParseError(lexemes.get(0) + " is not a valid subCommand!");
             }
             lexemes.remove(0);
 
@@ -68,25 +57,21 @@ public interface Parser {
                 final var nextLexeme = i <= lexemes.size() - 2 ? lexemes.get(i + 1) : null;
 
                 if (lexeme.equals("help")) {
-                    return Either.left(parser.help(subCommand));
+                    return Either.left(checker.help(subCommand));
                 }
 
-                if (parser.isFlag(lexeme)) {
-                    flags.add(parser.flag(lexeme));
-                    setField(instance, clazz, parser.flag(lexeme).name(), true);
-                } else if (parser.isOption(lexeme)) {
-                    final var option = parser.option(lexeme);
+                if (checker.isFlag(lexeme)) {
+                    setField(instance, clazz, checker.flag(lexeme).name(), true);
+                } else if (checker.isOption(lexeme)) {
+                    final var option = checker.option(lexeme);
                     if (nextLexeme == null) {
                         throw new ParseError("No valid argument was found following the " + option.name() + " option!");
                     }
 
-                    final var arg = parser.argument(option, nextLexeme);
+                    final var arg = checker.argument(option, nextLexeme);
                     if (arg == null) {
                         throw new ParseError(nextLexeme + " is not a valid argument for option " + option.name() + "!");
                     }
-
-                    options.add(option);
-                    arguments.put(arg, nextLexeme);
 
                     if (clazz.getDeclaredField(option.name()).getType() == String.class) {
                         setField(instance, clazz, option.name(), nextLexeme);
@@ -100,18 +85,18 @@ public interface Parser {
                         System.out.println("Warning: " + option.name() + " was neither a String or List<String>, and hence could not be set.");
                     }
                     i++;
-                } else if (parser.isArgument(subCommand, lexeme)) {
+                } else if (checker.isArgument(subCommand, lexeme)) {
                     if (argument != null) {
                         throw new ParseError("More than one argument for sub-command " + subCommand.name() + " was found!");
                     }
-                    argument = parser.argument(subCommand, lexeme);
+                    argument = checker.argument(subCommand, lexeme);
                     if (argument == null) {
                         throw new ParseError(lexeme + " is not a valid subcommand argument for + " + subCommand.name() + "!");
                     }
 
-                    arguments.put(argument, lexeme);
-
                     setField(instance, clazz, subCommand.name(), lexeme);
+                } else if (checker.isSubCommand(lexeme)) {
+                    throw new ParseError("Second subCommand specified: " + lexeme + ". SubCommand '" + subCommand.name() + "' was already supplied.");
                 } else {
                     throw new ParseError(lexeme + " is not a valid flag or option!");
                 }
@@ -123,19 +108,35 @@ public interface Parser {
         }
     }
 
-    static <T> void setField(final T instance, final Class<T> clazz, final String name, final Object value) throws NoSuchFieldException, IllegalAccessException {
+    public String help() {
+        return checker.help();
+    }
+
+    public String help(final SubCommand subCommand) {
+        return checker.help(subCommand);
+    }
+
+    private static <T> T make(final Class<T> clazz) throws ParseError {
+        try {
+            return clazz.getDeclaredConstructor().newInstance();
+        } catch (final InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
+            throw new ParseError("The class " + clazz.getSimpleName() + " could not be instantiated for some reason. Please make sure that the annotations were used properly.");
+        }
+    }
+
+    private static <T> void setField(final T instance, final Class<T> clazz, final String name, final Object value) throws NoSuchFieldException, IllegalAccessException {
         final Field field = clazz.getDeclaredField(name);
         field.setAccessible(true);
         field.set(instance, value);
     }
 
-    static <T> Object getField(final T instance, final Class<T> clazz, final String name) throws IllegalAccessException, NoSuchFieldException {
+    private static <T> Object getField(final T instance, final Class<T> clazz, final String name) throws IllegalAccessException, NoSuchFieldException {
         final Field field = clazz.getDeclaredField(name);
         field.setAccessible(true);
         return field.get(instance);
     }
 
-    class Checker<T> {
+    static class Checker<T> {
         Command command;
 
         List<SubCommand> subCommands;
@@ -200,41 +201,58 @@ public interface Parser {
         }
 
         String help() {
-            var sb = command.name() + ": " + command.description() + "\n";
-
-            sb += "\nUsage:\n";
-            sb += "   " + command.name() + " <subcommand> [options]\n";
-            sb += "The subcommands are:\n";
+            final var sb = new StringBuilder();
+            sb.append(String.format("%n"));
+            sb.append(String.format("%s: %s%n", command.name(), command.description()));
+            sb.append(String.format("%nUsage:%n   %s <subCommand> [flags] [options]%n", command.name()));
+            sb.append(String.format("The subCommands are:%n"));
             for (final var subCommand : subCommands) {
-                sb += "   " + subCommand.name() + ":\t" + subCommand.description() + "\n";
+                sb.append(String.format("   %-20s%s%n", subCommand.name(), subCommand.description()));
             }
-            sb += "   help:\tprints this output.\n";
-            sb += "Use \"" + command.name() + " help <subcommand>\" for more information about a subcommand.";
+            sb.append(String.format("   %-20sPrints this output.%n", "help"));
+            sb.append(String.format("Use \"%s help <subCommand>\" for more information about a subCommand", command.name()));
 
-            return sb;
+            return sb.toString();
         }
 
         String help(final SubCommand subCommand) {
-            var sb = "\nSubcommand (" + subCommand.name() + "): " + subCommand.description();
+            final List<Option> validOptions = options.stream().filter(e -> Arrays.asList(e.subCommands()).contains(subCommand.name())).collect(Collectors.toList());
+            final List<Flag> validFlags = flags.stream().filter(e -> Arrays.asList(e.subCommands()).contains(subCommand.name())).collect(Collectors.toList());
 
-            sb += "\nUsage:\n   " + command.name() + " " + subCommand.name() + " [options] " + subCommand.argument().name();
-            sb += "\nOptions:\n";
+            final var sb = new StringBuilder();
+            sb.append(String.format("%n"));
+            sb.append(String.format("%nSubCommand (%s): %s", subCommand.name(), subCommand.description()));
+            sb.append(String.format("%nUsage:%n   %s %s [flags] [options] %s", command.name(), subCommand.name(), subCommand.argument().name()));
+            sb.append(String.format("%nFlags:"));
+            for (final var validFlag : validFlags) {
+                sb.append(String.format("%n   %-30s%s", validFlag.alias()[0] + " [" + validFlag.alias()[1] + "]", validFlag.description()));
+            }
+            sb.append(String.format("%nOptions:"));
+            for (final var validOption : validOptions) {
+                sb.append(String.format("%n   %-30s%s", validOption.alias()[0] + " [" + validOption.alias()[1] + "] " + validOption.argument().format(), validOption.description()));
+            }
 
-            return sb;
+            return sb.toString();
         }
     }
 
-    static List<String> splitBySpaceOrSingleQuote(final String in) {
+    private static List<String> splitBySpaceOrSingleQuote(final String in) {
         return Pattern
-            .compile("([^']\\S*|'.+?')\\s*")
+            .compile("([^\\{\\}]\\S*|\\{.+?\\})\\s*")
             .matcher(in)
             .results()
             .map(MatchResult::group)
             .map(String::trim)
+            .map(s -> {
+                var withoutSingleQuotes = s;
+                withoutSingleQuotes = withoutSingleQuotes.startsWith("'") ? withoutSingleQuotes.substring(1) : withoutSingleQuotes;
+                withoutSingleQuotes = withoutSingleQuotes.endsWith("'") ? withoutSingleQuotes.substring(0, withoutSingleQuotes.length() - 1) : withoutSingleQuotes;
+                return withoutSingleQuotes;
+            })
             .collect(Collectors.toList());
     }
 
-    static <T extends Annotation> List<T> annotationsWithType(final Class<?> cls, final Class<T> annotation) {
+    private static <T extends Annotation> List<T> annotationsWithType(final Class<?> cls, final Class<T> annotation) {
         return Arrays.stream(cls.getDeclaredFields())
             .flatMap(e -> Arrays.stream(e.getAnnotationsByType(annotation)))
             .collect(Collectors.toList());

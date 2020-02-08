@@ -2,19 +2,17 @@ package httpsocketclient.http;
 
 import httpsocketclient.Const;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 
 import java.io.File;
 import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @AllArgsConstructor
+@Builder(toBuilder = true)
 public class Request {
-
-    private static final String NEWLINE = "%n\r";
-
     private final HttpMethod method;
 
     private final URL url;
@@ -36,11 +34,11 @@ public class Request {
     }
 
     public String host() {
-        return url.getHost();
+        return url.host();
     }
 
     public String path() {
-        return url.getPath() + (url.getQuery() == null ? "" : "?" + url.getQuery());
+        return url.path() + (url.query() == null ? "" : "?" + url.query());
     }
 
     public Map<String, String> headers() {

@@ -107,8 +107,8 @@ public class EntryPoint {
                             if (success.get().verbose) {
                                 System.out.println(response.request());
                             }
-                            System.out.println(response.acknowledgement());
-                            System.out.println(response.output());
+                            System.out.println(response.messageHeader());
+                            System.out.println(response.messageBody());
                         })
                         .onFailure(failure -> {
                             System.err.println(failure.getMessage());
@@ -147,7 +147,3 @@ public class EntryPoint {
         }
     }
 }
-
-
-
-

@@ -1,6 +1,5 @@
-package httpsocketclient.cli.parse;
+package httpsocketclient.cli;
 
 public interface CLI {
-
 
 }

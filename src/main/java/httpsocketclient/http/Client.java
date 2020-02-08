@@ -68,9 +68,9 @@ public class Client implements Gettable, Postable {
         try (final Socket socket = new Socket(request.host(), Const.PORT);
              final PrintWriter writer = new PrintWriter(socket.getOutputStream());
              final Scanner reader = new Scanner(new InputStreamReader(socket.getInputStream()))) {
-            var isAcknowledgement = true;
-            final StringBuilder acknowledgement = new StringBuilder();
-            final StringBuilder output = new StringBuilder();
+            var isMessageHeader = true;
+            final StringBuilder messageHeader = new StringBuilder();
+            final StringBuilder messageBody = new StringBuilder();
 
             writer.print(request.toString());
             writer.flush();
@@ -79,23 +79,35 @@ public class Client implements Gettable, Postable {
                 final String line = reader.nextLine();
 
                 if (line.equals("")) {
-                    isAcknowledgement = false;
+                    isMessageHeader = false;
                 }
 
-                if (isAcknowledgement) {
-                    acknowledgement.append(String.format("%n%s", line));
+                if (isMessageHeader) {
+                    messageHeader.append(String.format("%n%s", line));
                 } else {
-                    output.append(String.format("%n%s", line));
+                    messageBody.append(String.format("%n%s", line));
                 }
             }
 
-            return Response.builder().request(request).acknowledgement(acknowledgement.toString()).output(output.toString()).build();
+            Response response = new Response(request, messageHeader.toString(), messageBody.toString());
+
+            if (response.statusCode() != null && response.statusCode().matches("3\\d+")) {
+                final String location = response.headers().get("Location");
+                final URL redirectURL = Try.of(() -> new URL(location))
+                    .getOrElse(() ->
+                        Try.of(() -> new URL(request.url().protocol(), request.url().host(), location))
+                            .getOrElse(() -> null));
+
+                response = doRequest(request.toBuilder().url(redirectURL).build());
+            }
+
+            return response;
         } catch (final UnknownHostException e) {
             throw new RequestError("Server not found: " + e.getMessage());
         } catch (final IOException e) {
             throw new RequestError("I/O error: " + e.getMessage());
         } catch (final Exception e) {
-            throw new RequestError(e.getMessage());
+            throw new RequestError(e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }
 }
