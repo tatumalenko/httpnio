@@ -34,7 +34,7 @@ public final class Parser<T> {
             final SubCommand subCommand;
             Argument argument = null;
 
-            final var lexemes = splitBySpaceOrSingleQuote(in);
+            var lexemes = splitBySpaceOrSingleQuote(in);
 
             command = checker.command(lexemes.get(0));
             if (command == null) {
@@ -51,6 +51,25 @@ public final class Parser<T> {
                 throw new ParseError(lexemes.get(0) + " is not a valid subCommand!");
             }
             lexemes.remove(0);
+
+            if (lexemes.get(0).equals("help")) {
+                return Either.left(checker.help(subCommand));
+            }
+
+            final var lastLexeme = lexemes.get(lexemes.size() - 1);
+            if (checker.isArgument(subCommand, lastLexeme)) {
+                argument = checker.argument(subCommand, lastLexeme);
+                if (argument == null) {
+                    throw new ParseError(lastLexeme + " is not a valid subCommand argument for + " + subCommand.name() + "!");
+                }
+
+                setField(instance, clazz, subCommand.name(), lastLexeme);
+            }
+            lexemes.remove(lexemes.get(lexemes.size() - 1));
+
+            lexemes = splitByFlagOrOption(String.join(" ", lexemes));
+
+            //System.out.println(lexemes.stream().collect(Collectors.joining("\n")));
 
             for (int i = 0; i < lexemes.size(); i++) {
                 final var lexeme = lexemes.get(i);
@@ -87,11 +106,11 @@ public final class Parser<T> {
                     i++;
                 } else if (checker.isArgument(subCommand, lexeme)) {
                     if (argument != null) {
-                        throw new ParseError("More than one argument for sub-command " + subCommand.name() + " was found!");
+                        throw new ParseError("More than one argument for subCommand " + subCommand.name() + " was found!");
                     }
                     argument = checker.argument(subCommand, lexeme);
                     if (argument == null) {
-                        throw new ParseError(lexeme + " is not a valid subcommand argument for + " + subCommand.name() + "!");
+                        throw new ParseError(lexeme + " is not a valid subCommand argument for + " + subCommand.name() + "!");
                     }
 
                     setField(instance, clazz, subCommand.name(), lexeme);
@@ -238,7 +257,7 @@ public final class Parser<T> {
 
     private static List<String> splitBySpaceOrSingleQuote(final String in) {
         return Pattern
-            .compile("([^\\{\\}]\\S*|\\{.+?\\})\\s*")
+            .compile("[^\\s\"'{}]+|\"([^\"]*)\"|'([^']*)'|\\{([^{}]*)\\}")
             .matcher(in)
             .results()
             .map(MatchResult::group)
@@ -250,6 +269,40 @@ public final class Parser<T> {
                 return withoutSingleQuotes;
             })
             .collect(Collectors.toList());
+    }
+
+    private List<String> splitByFlagOrOption(final String in) {
+        final var command = checker.command.name();
+        final var subCommands = checker.subCommands.stream().map(SubCommand::name).collect(Collectors.toList());
+        final var flags = checker.flags.stream().flatMap(e -> Arrays.stream(e.alias())).collect(Collectors.toList());
+        final var options = checker.options.stream().flatMap(e -> Arrays.stream(e.alias())).collect(Collectors.toList());
+        final var tokens = new ArrayList<>();
+        tokens.add(command);
+        tokens.addAll(subCommands);
+        tokens.addAll(flags);
+        tokens.addAll(options);
+        final List<String> args = new ArrayList<>();
+
+        var lastWasToken = false;
+        for (final var arg : splitBySpaceOrSingleQuote(in)) {
+            final var idx = args.size() - 1;
+
+            final var isToken = tokens.contains(arg);
+            if (isToken) {
+                args.add(arg);
+            } else if (!lastWasToken) {
+                if (idx > -1) {
+                    args.set(idx, args.get(idx) + " " + arg);
+                } else {
+                    args.add(arg);
+                }
+            } else {
+                args.add(arg);
+            }
+
+            lastWasToken = isToken;
+        }
+        return args;
     }
 
     private static <T extends Annotation> List<T> annotationsWithType(final Class<?> cls, final Class<T> annotation) {

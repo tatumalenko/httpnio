@@ -9,7 +9,9 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-import java.net.MalformedURLException;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
 
 @NoArgsConstructor
@@ -52,7 +54,7 @@ public class EntryPoint {
         argument = @Argument(
             name = "header",
             format = "key:value",
-            regex = "(^[^\\s\\:]+:[^\\s\\:]+$)",
+            regex = "(^[^\\s\\:]+\\s*:\\s*[^\\s\\:]+$)",
             description = ""),
         subCommands = {"get", "post"},
         description = "Associates headers to HTTP Request with the format 'key:value'")
@@ -63,7 +65,7 @@ public class EntryPoint {
         alias = {"--data", "-d"},
         argument = @Argument(name = "data",
             format = "{\"prop\": \"value\"}",
-            regex = "(^\\{(\\s*,?\\s*\\S+:\\s*\\S+\\s*)+\\}$)",
+            regex = "(.*)", //""(^\\{(\\s*,?\\s*\\S+:\\s*\\S+\\s*)+\\}$)",
             description = ""),
         subCommands = {"post"},
         description = "Associates an inline data to the body HTTP POST request.")
@@ -74,7 +76,7 @@ public class EntryPoint {
         alias = {"--file", "-f"},
         argument = @Argument(name = "file",
             format = "/file/to/body",
-            regex = "(^\\/[\\w\\W]+\\.txt$)",
+            regex = "(^.*$)",
             description = ""),
         subCommands = {"post"},
         description = "Associates the content of a file to the body HTTP POST request.")
@@ -92,6 +94,7 @@ public class EntryPoint {
     String out;
 
     public static void main(final String[] args) {
+        System.out.println(String.join(" ", args));
         final Parser<EntryPoint> parser = new Parser<>(EntryPoint.class);
         final Try<Either<String, EntryPoint>> result = parser.parse(String.join(" ", args));
 
@@ -104,11 +107,21 @@ public class EntryPoint {
                 if (success.isRight()) {
                     exec(success.get())
                         .onSuccess(response -> {
+                            var whatToPrint = "";
                             if (success.get().verbose) {
-                                System.out.println(response.request());
+                                whatToPrint += response.request();
+                                whatToPrint += response.messageHeader();
                             }
-                            System.out.println(response.messageHeader());
-                            System.out.println(response.messageBody());
+                            whatToPrint += response.messageBody();
+
+                            if (success.get().out != null) {
+                                var whatToPrintInBytes = whatToPrint.getBytes();
+                                Try.of(() -> Files.write(Paths.get(success.get().out), whatToPrintInBytes))
+                                    .onSuccess(nothing -> System.out.println("Output saved in " + success.get().out))
+                                    .onFailure(failure -> System.out.println("Something went wrong trying to save the contents of the response to the file. " + failure.getClass().getSimpleName() + ": " + failure.getMessage()));
+                            } else {
+                                System.out.println(whatToPrint);
+                            }
                         })
                         .onFailure(failure -> {
                             System.err.println(failure.getMessage());
@@ -142,8 +155,10 @@ public class EntryPoint {
             return Try.of(() -> new Client().request(request));
         } catch (final ParseError e) {
             return Try.failure(e);
-        } catch (final MalformedURLException | RequestError e) {
-            return Try.failure(new RequestError(e.getMessage()));
+        } catch (final IOException e) {
+            return Try.failure(new RequestError("Something went wrong while trying to read the contents of the input file. " + e.getClass().getSimpleName() + ": " + e.getMessage()));
+        } catch (final RequestError e) {
+            return Try.failure(new RequestError("Something went wrong while processing the request. " + e.getClass().getSimpleName() + ": " + e.getMessage()));
         }
     }
 }

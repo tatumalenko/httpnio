@@ -2,7 +2,6 @@ package httpsocketclient.cli;
 
 import httpsocketclient.EntryPoint;
 import io.vavr.control.Either;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -12,7 +11,6 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Disabled
 class ParserTest {
     @ParameterizedTest
     @MethodSource("okProvider")
@@ -39,25 +37,34 @@ class ParserTest {
         return Stream.of(
             Arguments.of(
                 "httpc get  --verbose --header User-Agent:Chrome --data '{ \"key\": \"value\" }' https://google.com",
-                new EntryPoint("https://google.com", null, true, List.of("User-Agent:Chrome"), "'{ \"key\": \"value\" }'", null, null)),
+                new EntryPoint("https://google.com", null, true, List.of("User-Agent:Chrome"), "{ \"key\": \"value\" }", null, null)),
             Arguments.of(
                 "httpc help",
-                "httpc: httpc is a curl-like application but supports HTTP protocol only.\n" +
+                "\n" +
+                    "httpc: httpc is a curl-like application but supports HTTP protocol only.\n" +
                     "\n" +
                     "Usage:\n" +
-                    "   httpc <subcommand> [options]\n" +
-                    "The subcommands are:\n" +
-                    "   get:\tGet executes a HTTP GET request for a given URL.\n" +
-                    "   post:\tPost executes a HTTP POST request for a given URL with inline data or from file.\n" +
-                    "   help:\tprints this output.\n" +
-                    "Use \"httpc help <subcommand>\" for more information about a subcommand."),
+                    "   httpc <subCommand> [flags] [options]\n" +
+                    "The subCommands are:\n" +
+                    "   get                 Get executes a HTTP GET request for a given URL.\n" +
+                    "   post                Post executes a HTTP POST request for a given URL with inline data or from file.\n" +
+                    "   help                Prints this output.\n" +
+                    "Use \"httpc help <subCommand>\" for more information about a subCommand"),
             Arguments.of(
                 "httpc get help",
                 "\n" +
-                    "Subcommand (get): Get executes a HTTP GET request for a given URL.\n" +
+                    "\n" +
+                    "SubCommand (get): Get executes a HTTP GET request for a given URL.\n" +
                     "Usage:\n" +
-                    "   httpc get [options] url\n" +
-                    "Options:\n")
+                    "   httpc get [flags] [options] url\n" +
+                    "Flags:\n" +
+                    "   --verbose [-v]                Prints the detail of the response such as protocol, status, and headers.\n" +
+                    "Options:\n" +
+                    "   --header [-h] key:value       Associates headers to HTTP Request with the format 'key:value'\n" +
+                    "   --out [-o] /file/to/output    Outputs the response of the HTTP request to a file."),
+            Arguments.of(
+                "httpc get --header Content-Type:application/json --header Content-Type:application/html http://postman-echo.com/get?foo1=bar1&foo2=bar2",
+                new EntryPoint("http://postman-echo.com/get?foo1=bar1&foo2=bar2", null, false, List.of("Content-Type:application/json", "Content-Type:application/html"), null, null, null))
         );
     }
 
@@ -79,11 +86,7 @@ class ParserTest {
                 "poop is not a valid argument for option headers!"),
             Arguments.of(
                 "httpc get  --v --header poop --data '{ \"key\": \"value\" }' https://google.com",
-                "--v is not a valid flag or option!"),
-            Arguments.of(
-                "httpc get --header Content-Type:application/json --header Content-Type:application/html http://postman-echo.com/get?foo1=bar1&foo2=bar2",
-                "Error occurred while parsing the header: Content-Type:application/html. A duplicate key was found: Content-Type.")
+                "--v is not a valid flag or option!")
         );
     }
-
 }

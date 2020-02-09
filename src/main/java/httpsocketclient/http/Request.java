@@ -5,7 +5,9 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 
 import java.io.File;
-import java.net.MalformedURLException;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -99,12 +101,16 @@ public class Request {
             return this;
         }
 
-        public Request build() throws RequestError, MalformedURLException {
+        public Request build() throws RequestError, IOException {
             if (method == HttpMethod.POST && body != null && in != null) {
                 throw new RequestError("Fields body and in cannot be both specified.");
             }
             if (method == HttpMethod.POST && body == null && in == null) {
                 throw new RequestError("At least field body or in must be specified.");
+            }
+
+            if (in != null) {
+                body = new String(Files.readAllBytes(Paths.get(in)));
             }
 
             final var mappedHeaders = new HashMap<String, String>();
@@ -117,8 +123,8 @@ public class Request {
                         throw new RequestError("Error occurred while parsing the header: " + header + ". Should of been delimited by a `:` such as `key:value`, but was not.");
                     }
 
-                    final var key = matches[0];
-                    final var value = matches[1];
+                    final var key = matches[0].trim();
+                    final var value = matches[1].trim();
 
                     if (mappedHeaders.containsKey(key)) {
                         throw new RequestError("Error occurred while parsing the header: " + header + ". A duplicate key was found: " + key + ".");
