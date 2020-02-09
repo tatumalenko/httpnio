@@ -28,7 +28,7 @@ public final class URL {
     }
 
     public URL(final String protocol, final String host, final String path, final String query) throws MalformedURLException {
-        url = new java.net.URL(protocol + "://" + host + path + "?" + query);
+        url = new java.net.URL(protocol + "://" + host + path + (query != null ? "?" + query : ""));
         this.protocol = url.getProtocol();
         this.host = url.getHost();
         this.path = url.getPath();

@@ -9,8 +9,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.regex.MatchResult;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public final class Parser<T> {
@@ -34,7 +32,7 @@ public final class Parser<T> {
             final SubCommand subCommand;
             Argument argument = null;
 
-            var lexemes = splitBySpaceOrSingleQuote(in);
+            var lexemes = splitBySpace(in);
 
             command = checker.command(lexemes.get(0));
             if (command == null) {
@@ -68,8 +66,6 @@ public final class Parser<T> {
             lexemes.remove(lexemes.get(lexemes.size() - 1));
 
             lexemes = splitByFlagOrOption(String.join(" ", lexemes));
-
-            //System.out.println(lexemes.stream().collect(Collectors.joining("\n")));
 
             for (int i = 0; i < lexemes.size(); i++) {
                 final var lexeme = lexemes.get(i);
@@ -255,20 +251,8 @@ public final class Parser<T> {
         }
     }
 
-    private static List<String> splitBySpaceOrSingleQuote(final String in) {
-        return Pattern
-            .compile("[^\\s\"'{}]+|\"([^\"]*)\"|'([^']*)'|\\{([^{}]*)\\}")
-            .matcher(in)
-            .results()
-            .map(MatchResult::group)
-            .map(String::trim)
-            .map(s -> {
-                var withoutSingleQuotes = s;
-                withoutSingleQuotes = withoutSingleQuotes.startsWith("'") ? withoutSingleQuotes.substring(1) : withoutSingleQuotes;
-                withoutSingleQuotes = withoutSingleQuotes.endsWith("'") ? withoutSingleQuotes.substring(0, withoutSingleQuotes.length() - 1) : withoutSingleQuotes;
-                return withoutSingleQuotes;
-            })
-            .collect(Collectors.toList());
+    private static List<String> splitBySpace(final String in) {
+        return Arrays.stream(in.split(" ")).filter(e -> !e.trim().equals("")).collect(Collectors.toList());
     }
 
     private List<String> splitByFlagOrOption(final String in) {
@@ -284,7 +268,7 @@ public final class Parser<T> {
         final List<String> args = new ArrayList<>();
 
         var lastWasToken = false;
-        for (final var arg : splitBySpaceOrSingleQuote(in)) {
+        for (final var arg : splitBySpace(in)) {
             final var idx = args.size() - 1;
 
             final var isToken = tokens.contains(arg);

@@ -3,7 +3,6 @@ package httpsocketclient.http;
 import httpsocketclient.Const;
 import io.vavr.control.Try;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -27,7 +26,7 @@ public class Client implements Gettable, Postable {
         } catch (final ExecutionException ee) {
             throw new RequestError("ExecutionException: An error occurred during the execution of the task. Please ensure the request is valid.\n" + (ee.getMessage() != null ? ee.getMessage() : ""));
         } catch (final TimeoutException te) {
-            throw new RequestError("TimeoutException: The request was not received after " + Const.TIMEOUT_LIMIT_SECONDS + " seconds or retrieve a smaller payload. Please ensure the request is valid.\n" + (te.getMessage() != null ? te.getMessage() : ""));
+            throw new RequestError("TimeoutException: The request was not received after " + Const.TIMEOUT_LIMIT_SECONDS + " seconds. Please ensure the request is valid or retrieve a smaller payload.\n" + (te.getMessage() != null ? te.getMessage() : ""));
         } catch (final Exception e) {
             throw new RequestError("Exception: An unknown error occurred. Please ensure the request is valid.\n" + (e.getMessage() != null ? e.getMessage() : ""));
         }
@@ -41,16 +40,6 @@ public class Client implements Gettable, Postable {
     @Override
     public Response post(final Request request) throws RequestError {
         return get(request);
-    }
-
-    @Override
-    public Try<Response> post(final Request request, final File body, final FileOption fileKind) {
-        return null;
-    }
-
-    @Override
-    public Try<Response> post(final Request request, final File body, final File out) {
-        return null;
     }
 
     private Response dispatch(final Request request) throws RequestError {
@@ -95,7 +84,7 @@ public class Client implements Gettable, Postable {
                 final String location = response.headers().get("Location");
                 final URL redirectURL = Try.of(() -> new URL(location))
                     .getOrElse(() ->
-                        Try.of(() -> new URL(request.url().protocol(), request.url().host(), location))
+                        Try.of(() -> new URL(request.url().protocol(), request.url().host(), location, request.url().query()))
                             .getOrElse(() -> null));
 
                 response = doRequest(request.toBuilder().url(redirectURL).build());

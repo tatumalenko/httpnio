@@ -94,7 +94,6 @@ public class EntryPoint {
     String out;
 
     public static void main(final String[] args) {
-        System.out.println(String.join(" ", args));
         final Parser<EntryPoint> parser = new Parser<>(EntryPoint.class);
         final Try<Either<String, EntryPoint>> result = parser.parse(String.join(" ", args));
 

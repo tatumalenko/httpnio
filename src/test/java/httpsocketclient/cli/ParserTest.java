@@ -13,8 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ParserTest {
     @ParameterizedTest
-    @MethodSource("okProvider")
-    void parserParseReturnsOk(final String in, final Object expected) {
+    @MethodSource("successProvider")
+    void parserParseReturnsSuccess(final String in, final Object expected) {
         final var parser = new Parser<>(EntryPoint.class);
         final var ep = parser.parse(in);
 
@@ -33,10 +33,10 @@ class ParserTest {
         });
     }
 
-    static Stream<Arguments> okProvider() {
+    static Stream<Arguments> successProvider() {
         return Stream.of(
             Arguments.of(
-                "httpc get  --verbose --header User-Agent:Chrome --data '{ \"key\": \"value\" }' https://google.com",
+                "httpc get  --verbose --header User-Agent:Chrome --data { \"key\": \"value\" } https://google.com",
                 new EntryPoint("https://google.com", null, true, List.of("User-Agent:Chrome"), "{ \"key\": \"value\" }", null, null)),
             Arguments.of(
                 "httpc help",
@@ -69,14 +69,14 @@ class ParserTest {
     }
 
     @ParameterizedTest
-    @MethodSource("errorProvider")
-    void parserParseReturnsError(final String in, final String cause) {
+    @MethodSource("failureProvider")
+    void parserParseReturnsFailure(final String in, final String cause) {
         final var parser = new Parser<>(EntryPoint.class);
         final var ep = parser.parse(in);
         assertThat(ep.getCause().getMessage()).isEqualTo(cause);
     }
 
-    static Stream<Arguments> errorProvider() {
+    static Stream<Arguments> failureProvider() {
         return Stream.of(
             Arguments.of(
                 "httpc get  --verbose --header --data '{ \"key\": \"value\" }' https://google.com",
