@@ -1,10 +1,7 @@
-package httpsocketclient;
+package httpsocketclient.client;
 
+import httpsocketclient.Util;
 import httpsocketclient.cli.Parser;
-import httpsocketclient.client.HttpMethod;
-import httpsocketclient.client.Request;
-import httpsocketclient.client.RequestError;
-import httpsocketclient.client.Response;
 import io.vavr.control.Try;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -16,7 +13,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class EntryPointTest {
+public class EntryPointTest {
 
     @ParameterizedTest
     @MethodSource("successProvider")

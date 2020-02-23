@@ -29,7 +29,7 @@ public final class Parser<T> {
             final T instance = make(clazz);
 
             final Command command;
-            final SubCommand subCommand;
+            SubCommand subCommand = null;
             Argument argument = null;
 
             var lexemes = splitBySpace(in);
@@ -44,36 +44,34 @@ public final class Parser<T> {
                 return Either.left(checker.help());
             }
 
-            subCommand = checker.subCommand(lexemes.get(0));
-            if (subCommand == null) {
-                throw new ParseError(lexemes.get(0) + " is not a valid subCommand!");
-            }
-            lexemes.remove(0);
+            if (!checker.subCommands.isEmpty()) {
+                subCommand = checker.subCommand(lexemes.get(0));
+                if (subCommand == null) {
+                    throw new ParseError(lexemes.get(0) + " is not a valid subCommand!");
+                }
+                lexemes.remove(0);
 
-            if (lexemes.get(0).equals("help")) {
-                return Either.left(checker.help(subCommand));
-            }
-
-            final var lastLexeme = lexemes.get(lexemes.size() - 1);
-            if (checker.isArgument(subCommand, lastLexeme)) {
-                argument = checker.argument(subCommand, lastLexeme);
-                if (argument == null) {
-                    throw new ParseError(lastLexeme + " is not a valid subCommand argument for + " + subCommand.name() + "!");
+                if (lexemes.get(0).equals("help")) {
+                    return Either.left(checker.help(subCommand));
                 }
 
-                setField(instance, clazz, subCommand.name(), lastLexeme);
+                final var lastLexeme = lexemes.get(lexemes.size() - 1);
+                if (checker.isArgument(subCommand, lastLexeme)) {
+                    argument = checker.argument(subCommand, lastLexeme);
+                    if (argument == null) {
+                        throw new ParseError(lastLexeme + " is not a valid subCommand argument for + " + subCommand.name() + "!");
+                    }
+
+                    setField(instance, clazz, subCommand.name(), lastLexeme);
+                }
+                lexemes.remove(lexemes.get(lexemes.size() - 1));
             }
-            lexemes.remove(lexemes.get(lexemes.size() - 1));
 
             lexemes = splitByFlagOrOption(String.join(" ", lexemes));
 
             for (int i = 0; i < lexemes.size(); i++) {
                 final var lexeme = lexemes.get(i);
                 final var nextLexeme = i <= lexemes.size() - 2 ? lexemes.get(i + 1) : null;
-
-                if (lexeme.equals("help")) {
-                    return Either.left(checker.help(subCommand));
-                }
 
                 if (checker.isFlag(lexeme)) {
                     setField(instance, clazz, checker.flag(lexeme).name(), true);
@@ -212,20 +210,53 @@ public final class Parser<T> {
         }
 
         Argument argument(final SubCommand subCommand, final String in) {
+            if (subCommand == null) {
+                return null;
+            }
             return in.matches(subCommand.argument().regex()) ? subCommand.argument() : null;
         }
 
         String help() {
+            final String NAME_DESCRIPTION_TEMPLATE = "   %-20s%s%n";
             final var sb = new StringBuilder();
             sb.append(String.format("%n"));
             sb.append(String.format("%s: %s%n", command.name(), command.description()));
-            sb.append(String.format("%nUsage:%n   %s <subCommand> [flags] [options]%n", command.name()));
-            sb.append(String.format("The subCommands are:%n"));
-            for (final var subCommand : subCommands) {
-                sb.append(String.format("   %-20s%s%n", subCommand.name(), subCommand.description()));
+            sb.append(String.format("%nUsage:%n   %s" + (subCommands.isEmpty() ? "" : " <subCommand>") + " [flags] [options]%n", command.name()));
+
+            if (!subCommands.isEmpty()) {
+                sb.append(String.format("\nThe subCommands are:%n"));
             }
+            for (final var subCommand : subCommands) {
+                sb.append(String.format(NAME_DESCRIPTION_TEMPLATE, subCommand.name(), subCommand.description()));
+            }
+
+            if (!flags.isEmpty()) {
+                if (flags.stream().anyMatch(e -> e.subCommands().length == 0)) {
+                    sb.append(String.format("\nThe flags are:%n"));
+                }
+                for (final var flag : flags) {
+                    if (flag.subCommands().length == 0) {
+                        sb.append(String.format(NAME_DESCRIPTION_TEMPLATE, flag.name(), flag.description()));
+                    }
+                }
+            }
+
+            if (!options.isEmpty()) {
+                if (options.stream().anyMatch(e -> e.subCommands().length == 0)) {
+                    sb.append(String.format("\nThe options are:%n"));
+                }
+                for (final var option : options) {
+                    if (option.subCommands().length == 0) {
+                        sb.append(String.format(NAME_DESCRIPTION_TEMPLATE, option.name(), option.description()));
+                    }
+                }
+            }
+
             sb.append(String.format("   %-20sPrints this output.%n", "help"));
-            sb.append(String.format("Use \"%s help <subCommand>\" for more information about a subCommand", command.name()));
+
+            if (subCommands.stream().filter(e -> !e.name().equalsIgnoreCase("help")).count() > 0) {
+                sb.append(String.format("\nUse \"%s help <subCommand>\" for more information about a subCommand", command.name()));
+            }
 
             return sb.toString();
         }

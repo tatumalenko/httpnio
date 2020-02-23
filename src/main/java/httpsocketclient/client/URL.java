@@ -22,7 +22,7 @@ public final class URL {
     public URL(final String spec) throws MalformedURLException {
         url = new java.net.URL(spec);
         protocol = url.getProtocol();
-        host = url.getHost();
+        host = url.getHost() + (url.getPort() != -1 ? url.getPort() + ":" + url.getPort() : "");
         path = url.getPath();
         query = url.getQuery();
     }

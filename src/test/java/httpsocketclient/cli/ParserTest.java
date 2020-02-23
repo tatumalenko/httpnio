@@ -1,6 +1,6 @@
 package httpsocketclient.cli;
 
-import httpsocketclient.EntryPoint;
+import httpsocketclient.client.EntryPoint;
 import io.vavr.control.Either;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -44,11 +44,11 @@ class ParserTest {
                     "httpc: httpc is a curl-like application but supports HTTP protocol only.\n" +
                     "\n" +
                     "Usage:\n" +
-                    "   httpc <subCommand> [flags] [options]\n" +
+                    "   httpc <subCommand> [flags] [options]\n\n" +
                     "The subCommands are:\n" +
                     "   get                 Get executes a HTTP GET request for a given URL.\n" +
                     "   post                Post executes a HTTP POST request for a given URL with inline data or from file.\n" +
-                    "   help                Prints this output.\n" +
+                    "   help                Prints this output.\n\n" +
                     "Use \"httpc help <subCommand>\" for more information about a subCommand"),
             Arguments.of(
                 "httpc get help",

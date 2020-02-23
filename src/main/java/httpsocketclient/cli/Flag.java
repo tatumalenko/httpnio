@@ -14,7 +14,7 @@ public @interface Flag {
 
     boolean required();
 
-    String[] subCommands();
+    String[] subCommands() default {};
 
     String description();
 }

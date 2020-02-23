@@ -14,7 +14,7 @@ public @interface Option {
 
     Argument argument();
 
-    String[] subCommands();
+    String[] subCommands() default {};
 
     String description();
 }
