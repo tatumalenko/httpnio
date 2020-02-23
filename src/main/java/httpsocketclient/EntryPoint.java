@@ -1,7 +1,7 @@
 package httpsocketclient;
 
 import httpsocketclient.cli.*;
-import httpsocketclient.http.*;
+import httpsocketclient.client.*;
 import io.vavr.control.Either;
 import io.vavr.control.Try;
 import lombok.AllArgsConstructor;

@@ -1,4 +1,4 @@
-package httpsocketclient.http;
+package httpsocketclient.client;
 
 import httpsocketclient.Const;
 import lombok.AllArgsConstructor;

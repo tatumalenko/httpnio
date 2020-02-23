@@ -1,4 +1,4 @@
-package httpsocketclient.http;
+package httpsocketclient.client;
 
 import lombok.Getter;
 import lombok.experimental.Accessors;

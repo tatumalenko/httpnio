@@ -1,10 +1,10 @@
 package httpsocketclient;
 
 import httpsocketclient.cli.Parser;
-import httpsocketclient.http.HttpMethod;
-import httpsocketclient.http.Request;
-import httpsocketclient.http.RequestError;
-import httpsocketclient.http.Response;
+import httpsocketclient.client.HttpMethod;
+import httpsocketclient.client.Request;
+import httpsocketclient.client.RequestError;
+import httpsocketclient.client.Response;
 import io.vavr.control.Try;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
