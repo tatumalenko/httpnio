@@ -16,7 +16,7 @@ public class EntryPoint {
                     httpsocketclient.server.EntryPoint.entryPoint(args);
                     break;
                 default:
-                    throw new IllegalStateException("Not a valid command.");
+                    throw new IllegalArgumentException("Not a valid command.");
             }
         }
     }

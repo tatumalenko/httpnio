@@ -1,6 +1,7 @@
 package httpsocketclient.client;
 
 import httpsocketclient.Const;
+import httpsocketclient.server.Response;
 import io.vavr.control.Try;
 
 import java.io.IOException;
@@ -49,12 +50,12 @@ public class Client implements Gettable, Postable {
             case POST:
                 return post(request);
             default:
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("Invalid http method specified: " + request.method());
         }
     }
 
     private Response doRequest(final Request request) throws RequestError {
-        try (final Socket socket = new Socket(request.host(), Const.PORT);
+        try (final Socket socket = new Socket(request.host(), request.url().port());
              final PrintWriter writer = new PrintWriter(socket.getOutputStream());
              final Scanner reader = new Scanner(new InputStreamReader(socket.getInputStream()))) {
             var isMessageHeader = true;

@@ -8,9 +8,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @AllArgsConstructor
 @Builder(toBuilder = true)
@@ -86,6 +89,11 @@ public class Request {
             return this;
         }
 
+        public Builder headers(final Map<String, String> headers) {
+            this.headers = headers.entrySet().stream().map(e -> e.getKey() + ": " + e.getValue()).collect(Collectors.toList());
+            return this;
+        }
+
         public Builder body(final String body) {
             this.body = body;
             return this;
@@ -104,9 +112,6 @@ public class Request {
         public Request build() throws RequestError, IOException {
             if (method == HttpMethod.POST && body != null && in != null) {
                 throw new RequestError("Fields body and in cannot be both specified.");
-            }
-            if (method == HttpMethod.POST && body == null && in == null) {
-                throw new RequestError("At least field body or in must be specified.");
             }
 
             if (in != null) {
@@ -142,33 +147,83 @@ public class Request {
     public String toString() {
         final StringBuilder sb = new StringBuilder();
 
-        sb.append(String.format("%s %s HTTP/1.0%s", method().name(), path(), Const.NEWLINE));
-        sb.append(String.format("Host: %s%s", host(), Const.NEWLINE));
+        sb.append(String.format("%s %s HTTP/1.0%s", method().name(), path().equals("") ? "/" : path(), Const.CRLF));
+        sb.append(String.format("Host: %s%s", host(), Const.CRLF));
         if (headers() != null) {
             for (final var entry : headers().entrySet()) {
-                sb.append(String.format("%s: %s%s", entry.getKey(), entry.getValue(), Const.NEWLINE));
+                sb.append(String.format("%s: %s%s", entry.getKey(), entry.getValue(), Const.CRLF));
             }
         }
 
-        addHeaderIfAbsent(sb, "Content-Type", "application/json");
+        addHeaderIfAbsent(sb, Const.Headers.CONTENT_TYPE, Const.Headers.APPLICATION_JSON);
 
         if (body() != null) {
-            addHeaderIfAbsent(sb, "Content-Length", body().length());
+            addHeaderIfAbsent(sb, Const.Headers.CONTENT_LENGTH, body().length());
         }
 
         if (body() != null) {
-            sb.append(Const.NEWLINE);
+            sb.append(Const.CRLF);
             sb.append(String.format("%s", body()));
         }
 
-        sb.append(Const.NEWLINE);
+        sb.append(Const.CRLF);
 
         return sb.toString();
     }
 
+    public static Request of(final String spec) throws RequestError {
+        final Builder requestBuilder = Request.builder();
+
+        int lineBreakCount = 0;
+        int lineCount = 1;
+
+        String host;
+        String path = "";
+        final List<String> headers = new ArrayList<>();
+
+        for (final var line : spec.split(Const.CRLF)) {
+            if (lineCount == 1) {
+                final String[] lexemes = line.split("\\s+");
+                if (lexemes.length != 3) {
+                    throw new IllegalStateException("Parsing request method from spec failed. Make sure request follow HTTP 1.0 protocol spec.");
+                }
+
+                requestBuilder.method(HttpMethod.of(lexemes[0]));
+                path = lexemes[1];
+            } else if (lineCount == 2) {
+                if (!line.contains("Host: ")) {
+                    throw new IllegalStateException("Parsing request host from spec failed. Make sure request follow HTTP 1.0 protocol spec.");
+                }
+
+                host = Pattern.compile("Host: (\\S+)").matcher(line).results().map(ee -> ee.group(1)).findFirst().orElse(null);
+                requestBuilder.url("http://" + host + path);
+            } else {
+                headers.add(line.trim());
+            }
+
+            if (line.equalsIgnoreCase("")) {
+                lineBreakCount += 1;
+            } else if (lineBreakCount == 1) {
+                requestBuilder.body(line);
+            }
+
+            lineCount += 1;
+        }
+
+        if (!headers.isEmpty()) {
+            requestBuilder.headers(headers);
+        }
+
+        try {
+            return requestBuilder.build();
+        } catch (final IOException e) {
+            throw new RequestError("IOException: " + e.getMessage());
+        }
+    }
+
     private void addHeaderIfAbsent(final StringBuilder sb, final String headerKey, final String headerValue) {
         if (headers() != null && !headers.containsKey(headerKey)) {
-            sb.append(String.format("%s: %s%s", headerKey, headerValue, Const.NEWLINE));
+            sb.append(String.format("%s: %s%s", headerKey, headerValue, Const.CRLF));
         }
     }
 

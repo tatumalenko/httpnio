@@ -2,6 +2,7 @@ package httpsocketclient.client;
 
 import httpsocketclient.Const;
 import httpsocketclient.cli.*;
+import httpsocketclient.server.Response;
 import io.vavr.control.Either;
 import io.vavr.control.Try;
 import lombok.AllArgsConstructor;
@@ -111,7 +112,7 @@ public class EntryPoint {
                                 whatToPrint += response.request();
                                 whatToPrint += response.messageHeader();
                             }
-                            whatToPrint += response.messageBody();
+                            whatToPrint += response.body();
 
                             if (success.get().out != null) {
                                 var whatToPrintInBytes = whatToPrint.getBytes();

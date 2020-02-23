@@ -2,6 +2,7 @@ package httpsocketclient.client;
 
 import httpsocketclient.Util;
 import httpsocketclient.cli.Parser;
+import httpsocketclient.server.Response;
 import io.vavr.control.Try;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -32,7 +33,7 @@ public class EntryPointTest {
                         assertThat(response.statusLine()).isEqualTo(expected.statusLine());
                         assertThat(response.statusCode()).isEqualTo(expected.statusCode());
                         assertThat(response.headers()).isEqualTo(expected.headers());
-                        assertThat(Util.messageBodyWithoutNonIdempotentHeaders(response.messageBody())).isEqualTo(Util.messageBodyWithoutNonIdempotentHeaders(expected.messageBody()));
+                        assertThat(Util.messageBodyWithoutNonIdempotentHeaders(response.body())).isEqualTo(Util.messageBodyWithoutNonIdempotentHeaders(expected.body()));
                     })
                     .onFailure(failure -> {
                         throw new AssertionError("This should not happen");
