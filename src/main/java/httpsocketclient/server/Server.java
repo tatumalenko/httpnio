@@ -15,74 +15,112 @@ import java.util.concurrent.Executors;
 @SuppressWarnings("squid:S2189")
 public class Server {
 
-    public static void run(final Protocol protocol, final int port) {
-        System.out.println("Starting doResponse");
-        final var pool = Executors.newFixedThreadPool(10);
+    private final ServerConfiguration serverConfiguration;
+
+    private final ServerLogger log;
+
+    public Server(final ServerConfiguration serverConfiguration) {
+        this.serverConfiguration = serverConfiguration;
+        log = new ServerLogger(serverConfiguration.verbose(), "main-server-thread");
+    }
+
+    public void run(final Protocol protocol) {
+        log.debug("Starting server");
+        final var poolSize = 10;
+        final var pool = Executors.newFixedThreadPool(poolSize);
+        final var port =
+            serverConfiguration.port() == 0 || serverConfiguration.port() == -1
+                ? Const.DEFAULT_SERVER_PORT
+                : serverConfiguration.port();
+        log.debug("Using port " + port);
 
         for (; ; ) {
             try (
                 final ServerSocket serverSocket = new ServerSocket(port)
             ) {
-                pool.execute(new SocketHandler(serverSocket.accept(), protocol.copy()));
+                pool.execute(new SocketHandler(serverSocket.accept(), protocol.copy(), serverConfiguration.verbose()));
 
             } catch (final IOException | IllegalAccessException e) {
                 e.printStackTrace();
             }
         }
-
     }
 
     private static class SocketHandler implements Runnable {
 
-        Socket socket;
+        final Socket socket;
 
-        Protocol protocol;
+        final Protocol protocol;
 
-        public SocketHandler(final Socket socket, final Protocol protocol) {
+        final boolean verbose;
+
+        ServerLogger log;
+
+        public SocketHandler(final Socket socket, final Protocol protocol, final boolean verbose) {
             this.socket = socket;
             this.protocol = protocol;
+            this.verbose = verbose;
         }
 
         @Override
         public void run() {
+            log = new ServerLogger(verbose, Thread.currentThread().getName());
             try (
                 final PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                 final BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))
             ) {
-                System.out.println("Connection accepted");
+                log.debug("Connection accepted");
+                boolean keepAlive = true;
 
-                Request request = null;
-                final StringBuilder requestBuilder = new StringBuilder();
-                String line;
+                while (keepAlive) {
+                    Request request = null;
+                    final StringBuilder requestBuilder = new StringBuilder();
+                    String line;
 
-                while ((line = in.readLine()) != null) {
-                    requestBuilder.append(line);
-                    requestBuilder.append(Const.CRLF);
+                    while ((line = in.readLine()) != null) {
+                        requestBuilder.append(line);
+                        requestBuilder.append(Const.CRLF);
 
-                    if (line.equalsIgnoreCase("")) {
-                        request = Request.of(requestBuilder.toString());
+                        if (line.equalsIgnoreCase("")) {
+                            request = Request.of(requestBuilder.toString());
 
-                        if (request.headers().containsKey(Const.Headers.CONTENT_LENGTH)) {
-                            final StringBuilder body = new StringBuilder();
-                            final int contentLength = Integer.parseInt(request.headers().get(Const.Headers.CONTENT_LENGTH));
-                            for (var i = 0; i < contentLength; i++) {
-                                body.append((char) in.read());
+                            if (request.headers().containsKey(Const.Headers.CONTENT_LENGTH)) {
+                                final StringBuilder body = new StringBuilder();
+                                final int contentLength = Integer.parseInt(request.headers().get(Const.Headers.CONTENT_LENGTH));
+                                for (var i = 0; i < contentLength; i++) {
+                                    body.append((char) in.read());
+                                }
+                                request = Request.builder()
+                                    .url(request.url().toString())
+                                    .method(request.method())
+                                    .headers(request.headers())
+                                    .body(body.toString())
+                                    .build();
                             }
-                            request = Request.builder()
-                                .url(request.url().toString())
-                                .method(request.method())
-                                .headers(request.headers())
-                                .body(body.toString())
-                                .build();
-                        }
 
-                        break;
+                            break;
+                        }
+                    }
+                    if (request != null) {
+                        log.debug("Request:");
+                        log.debug(request.toString());
+                        final String responseText = protocol.response(request).toString();
+                        log.debug("Response:");
+                        log.debug(responseText);
+                        out.print(responseText);
+                        out.flush();
+
+                        if (request.headers().containsKey(Const.Headers.CONNECTION)) {
+                            final String connection = request.headers().get(Const.Headers.CONNECTION);
+                            keepAlive = connection.equalsIgnoreCase("keep-alive");
+                        } else {
+                            keepAlive = false;
+                        }
+                    } else {
+                        log.debug("Connection terminated");
+                        keepAlive = false;
                     }
                 }
-
-                out.print(protocol.response(request).toString());
-                out.flush();
-
             } catch (final IOException | RequestError e) {
                 e.printStackTrace();
             }

@@ -80,7 +80,7 @@ public class Response {
     public String toString() {
         final var sb = new StringBuilder();
 
-        sb.append(String.format("HTTP/1.0 %s %s%s", statusCode, statusMessage, Const.CRLF));
+        sb.append(String.format("HTTP/1.1 %s %s%s", statusCode, statusMessage, Const.CRLF));
 
         for (final var header : headers.entrySet()) {
             sb.append(String.format("%s: %s%s", header.getKey(), header.getValue(), Const.CRLF));

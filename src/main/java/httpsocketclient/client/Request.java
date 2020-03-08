@@ -122,7 +122,7 @@ public class Request {
 
             if (headers != null) {
                 for (final var header : headers) {
-                    final var matches = header.split(":");
+                    final var matches = header.split(":", 2);
 
                     if (matches.length != 2) {
                         throw new RequestError("Error occurred while parsing the header: " + header + ". Should of been delimited by a `:` such as `key:value`, but was not.");

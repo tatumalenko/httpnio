@@ -9,7 +9,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-import java.util.List;
+import java.io.IOException;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -34,7 +34,7 @@ public class EntryPoint {
             regex = "(^\\d+$)",
             description = ""),
         description = "Specifies the port number that the server will listen and serve at (default is 8080).")
-    List<String> port;
+    int port;
 
     @Option(
         name = "directory",
@@ -69,9 +69,9 @@ public class EntryPoint {
 
     static void exec(final httpsocketclient.server.EntryPoint ep) {
         try {
-            // TODO: Implement debugging option (verbose)
-            Server.run(new FileServerProtocol(ep.directory), 4445);
-        } catch (final IllegalAccessException e) {
+            final ServerConfiguration serverConfiguration = new ServerConfiguration(ep.port, ep.verbose, ep.directory);
+            new Server(serverConfiguration).run(new FileServerProtocol(serverConfiguration.directory()));
+        } catch (final IOException e) {
             e.printStackTrace();
         }
     }

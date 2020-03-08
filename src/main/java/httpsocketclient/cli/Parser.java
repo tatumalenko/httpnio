@@ -94,6 +94,8 @@ public final class Parser<T> {
                         value = value == null ? new ArrayList<>() : value;
                         value.add(nextLexeme);
                         setField(instance, clazz, option.name(), value);
+                    } else if (clazz.getDeclaredField(option.name()).getType().toString().equals("int")) {
+                        setField(instance, clazz, option.name(), Integer.parseInt(nextLexeme));
                     } else {
                         System.out.println("Warning: " + option.name() + " was neither a String or List<String>, and hence could not be set.");
                     }

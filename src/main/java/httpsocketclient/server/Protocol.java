@@ -8,5 +8,5 @@ public interface Protocol {
 
     Response response(Request request) throws IOException;
 
-    Protocol copy() throws IllegalAccessException;
+    Protocol copy() throws IllegalAccessException, IOException;
 }

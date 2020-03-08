@@ -16,31 +16,21 @@ import java.util.stream.Collectors;
 
 public class FileServerProtocol implements Protocol {
 
-    final String directory;
-
     final Path path;
 
-    public FileServerProtocol() throws IllegalAccessException {
-        this("");
+    String pathAsString;
+
+    public FileServerProtocol() throws IOException {
+        this(Paths.get("").toAbsolutePath().toString());
     }
 
-    public FileServerProtocol(final String directory) throws IllegalAccessException {
-        final Path currentDirectory = Paths.get("").toAbsolutePath();
+    public FileServerProtocol(final String directory) throws IOException {
+        path = Paths.get(directory);
 
-        if (directory == null || directory.isEmpty()) {
-            path = currentDirectory;
-            this.directory = path.toString();
+        if (!path.toFile().exists() || !path.toFile().isDirectory()) {
+            throw new IllegalStateException("The directory specified does not exist: " + directory);
         } else {
-            path = Paths.get(directory);
-            this.directory = path.toAbsolutePath().toString();
-
-            if (this.directory != null && !this.directory.isEmpty()) {
-                if (!path.startsWith(currentDirectory)) {
-                    throw new IllegalAccessException("Unauthorized file system access. Directory should be a child of the current working directory: " + currentDirectory.toAbsolutePath().toString());
-                }
-            } else {
-                throw new IllegalStateException("The directory specified does not exist: " + directory);
-            }
+            pathAsString = path.toFile().getCanonicalPath();
         }
     }
 
@@ -50,11 +40,11 @@ public class FileServerProtocol implements Protocol {
     }
 
     @Override
-    public Protocol copy() throws IllegalAccessException {
-        return new FileServerProtocol(directory);
+    public Protocol copy() throws IOException {
+        return new FileServerProtocol(pathAsString);
     }
 
-    private Response dispatchResponse(final Request request) throws IOException {
+    private Response dispatchResponse(final Request request) {
         switch (request.method()) {
             case GET:
                 return get(request);
@@ -73,11 +63,9 @@ public class FileServerProtocol implements Protocol {
                 .headers(Map.of(
                     "Accept", "*/*"
                 ))
-                .body(String.join("\n", fileNames(directory)))
+                .body(String.join("\n", fileNames(pathAsString)))
                 .build();
-
         } else {
-
             try {
                 final String fileContent = read(request.path());
 
@@ -118,6 +106,15 @@ public class FileServerProtocol implements Protocol {
                     ))
                     .body("The specified file could not be read: " + request.path() + "\n" + e.getMessage())
                     .build();
+            } catch (final FileServerProtocolError e) {
+                return Response.builder()
+                    .statusCode("401")
+                    .statusMessage("UNAUTHORIZED ACCESS")
+                    .headers(Map.of(
+                        "Accept", "*/*"
+                    ))
+                    .body(e.getMessage())
+                    .build();
             }
         }
     }
@@ -143,19 +140,41 @@ public class FileServerProtocol implements Protocol {
                 ))
                 .body("Could not write to file: " + request.path() + "\n" + e.getMessage())
                 .build();
+        } catch (final FileServerProtocolError e) {
+            return Response.builder()
+                .statusCode("401")
+                .statusMessage("UNAUTHORIZED ACCESS")
+                .headers(Map.of(
+                    "Accept", "*/*"
+                ))
+                .body(e.getMessage())
+                .build();
         }
-
     }
 
     private List<File> files() {
-        return ls(directory);
+        return ls(pathAsString);
     }
 
     private File file(final String relativeFilePath) {
-        return files().stream().filter(e -> e.getAbsolutePath().equals(directory + relativeFilePath)).findFirst().orElse(null);
+        return files().stream().filter(e -> e.getAbsolutePath().equals(pathAsString + relativeFilePath)).findFirst().orElse(null);
     }
 
-    private String read(final String relativeFilePath) throws IOException {
+    private String read(final String relativeFilePath) throws IOException, FileServerProtocolError {
+        final Path pathToFile = Paths.get(pathAsString + relativeFilePath);
+
+        if (isUnauthorizedPathAccess(pathToFile)) {
+            throw new FileServerProtocolError("Unauthorized access to path outside root working directory: " + pathAsString);
+        }
+
+        if (Files.isDirectory(pathToFile)) {
+            return readDirectory(relativeFilePath);
+        } else {
+            return readFile(relativeFilePath);
+        }
+    }
+
+    private String readFile(final String relativeFilePath) throws IOException {
         final File file = file(relativeFilePath);
 
         if (file == null) {
@@ -165,8 +184,23 @@ public class FileServerProtocol implements Protocol {
         return String.join("\n", Files.readAllLines(file.toPath()));
     }
 
-    private void write(final String relativeFilePath, final String content) throws IOException {
-        final File file = new File(directory + relativeFilePath);
+    private String readDirectory(final String relativeDirectoryPath) {
+        return ls(pathAsString + relativeDirectoryPath).stream()
+            .map(e -> e.getAbsolutePath().replace(pathAsString, ""))
+            .collect(Collectors.joining("\n"));
+    }
+
+    private void write(final String relativeFilePath, final String content) throws IOException, FileServerProtocolError {
+        final Path pathToFile = Paths.get(pathAsString + relativeFilePath);
+
+        if (isUnauthorizedPathAccess(pathToFile)) {
+            throw new FileServerProtocolError("Unauthorized access to path outside root working directory: " + pathAsString);
+        }
+
+        if (!Files.exists(pathToFile.getParent())) {
+            Files.createDirectory(pathToFile.getParent());
+        }
+        final File file = new File(pathToFile.toAbsolutePath().toString());
         try (final FileWriter fw = new FileWriter(file, false)) {
             fw.write(content);
         }
@@ -176,7 +210,7 @@ public class FileServerProtocol implements Protocol {
         final var files = ls(directoryName);
         return files.stream()
             .map(File::getAbsolutePath)
-            .map(e -> e.replace(directory, ""))
+            .map(e -> e.replace(pathAsString, ""))
             .collect(Collectors.toList());
     }
 
@@ -198,5 +232,9 @@ public class FileServerProtocol implements Protocol {
         }
 
         return files;
+    }
+
+    private boolean isUnauthorizedPathAccess(final Path pathRequested) throws IOException {
+        return !(pathRequested.toFile().getCanonicalPath().startsWith(pathAsString));
     }
 }
