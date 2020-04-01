@@ -1,8 +1,8 @@
-package httpsocketclient.client;
+package httpnio.client;
 
-import httpsocketclient.Const;
-import httpsocketclient.cli.*;
-import httpsocketclient.server.Response;
+import httpnio.Const;
+import httpnio.cli.*;
+import httpnio.server.Response;
 import io.vavr.control.Either;
 import io.vavr.control.Try;
 import lombok.AllArgsConstructor;
@@ -118,7 +118,9 @@ public class EntryPoint {
                                 var whatToPrintInBytes = whatToPrint.getBytes();
                                 Try.of(() -> Files.write(Paths.get(success.get().out), whatToPrintInBytes))
                                     .onSuccess(nothing -> System.out.println("Output saved in " + success.get().out))
-                                    .onFailure(failure -> System.out.println("Something went wrong trying to save the contents of the response to the file. " + failure.getClass().getSimpleName() + ": " + failure.getMessage()));
+                                    .onFailure(failure -> System.out.println(
+                                        "Something went wrong trying to save the contents of the response to the file. " + failure.getClass()
+                                            .getSimpleName() + ": " + failure.getMessage()));
                             } else {
                                 System.out.println(whatToPrint);
                             }
@@ -156,9 +158,11 @@ public class EntryPoint {
         } catch (final ParseError e) {
             return Try.failure(e);
         } catch (final IOException e) {
-            return Try.failure(new RequestError("Something went wrong while trying to read the contents of the input file. " + e.getClass().getSimpleName() + ": " + e.getMessage()));
+            return Try.failure(new RequestError("Something went wrong while trying to read the contents of the input file. " + e.getClass()
+                .getSimpleName() + ": " + e.getMessage()));
         } catch (final RequestError e) {
-            return Try.failure(new RequestError("Something went wrong while processing the request. " + e.getClass().getSimpleName() + ": " + e.getMessage()));
+            return Try.failure(new RequestError("Something went wrong while processing the request. " + e.getClass()
+                .getSimpleName() + ": " + e.getMessage()));
         }
     }
 }

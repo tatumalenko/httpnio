@@ -1,4 +1,4 @@
-package httpsocketclient.cli;
+package httpnio.cli;
 
 public class ParseError extends Exception {
     public ParseError(final String message) {

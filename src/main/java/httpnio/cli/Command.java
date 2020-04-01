@@ -1,4 +1,4 @@
-package httpsocketclient.cli;
+package httpnio.cli;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

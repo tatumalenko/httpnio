@@ -1,6 +1,6 @@
-package httpsocketclient.client;
+package httpnio.client;
 
-import httpsocketclient.Const;
+import httpnio.Const;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 

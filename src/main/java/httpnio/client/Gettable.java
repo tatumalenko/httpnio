@@ -1,6 +1,6 @@
-package httpsocketclient.client;
+package httpnio.client;
 
-import httpsocketclient.server.Response;
+import httpnio.server.Response;
 
 public interface Gettable {
     Response get(Request request) throws RequestError;

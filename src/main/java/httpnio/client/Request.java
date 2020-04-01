@@ -1,6 +1,6 @@
-package httpsocketclient.client;
+package httpnio.client;
 
-import httpsocketclient.Const;
+import httpnio.Const;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 
@@ -139,7 +139,13 @@ public class Request {
                 }
             }
 
-            return new Request(method, new URL(url), mappedHeaders, body, in != null ? new File(in) : null, out != null ? new File(out) : null);
+            return new Request(
+                method,
+                new URL(url),
+                mappedHeaders,
+                body,
+                in != null ? new File(in) : null,
+                out != null ? new File(out) : null);
         }
     }
 
@@ -185,14 +191,16 @@ public class Request {
             if (lineCount == 1) {
                 final String[] lexemes = line.split("\\s+");
                 if (lexemes.length != 3) {
-                    throw new IllegalStateException("Parsing request method from spec failed. Make sure request follow HTTP 1.0 protocol spec.");
+                    throw new IllegalStateException(
+                        "Parsing request method from spec failed. Make sure request follow HTTP 1.0 protocol spec.");
                 }
 
                 requestBuilder.method(HttpMethod.of(lexemes[0]));
                 path = lexemes[1];
             } else if (lineCount == 2) {
                 if (!line.contains("Host: ")) {
-                    throw new IllegalStateException("Parsing request host from spec failed. Make sure request follow HTTP 1.0 protocol spec.");
+                    throw new IllegalStateException(
+                        "Parsing request host from spec failed. Make sure request follow HTTP 1.0 protocol spec.");
                 }
 
                 host = Pattern.compile("Host: (\\S+)").matcher(line).results().map(ee -> ee.group(1)).findFirst().orElse(null);

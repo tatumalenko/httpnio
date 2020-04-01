@@ -1,4 +1,4 @@
-package httpsocketclient.client;
+package httpnio.client;
 
 public enum HttpMethod {
     GET,

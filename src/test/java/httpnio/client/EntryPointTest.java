@@ -1,8 +1,8 @@
-package httpsocketclient.client;
+package httpnio.client;
 
-import httpsocketclient.Util;
-import httpsocketclient.cli.Parser;
-import httpsocketclient.server.Response;
+import httpnio.Util;
+import httpnio.cli.Parser;
+import httpnio.server.Response;
 import io.vavr.control.Try;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -33,7 +33,8 @@ public class EntryPointTest {
                         assertThat(response.statusLine()).isEqualTo(expected.statusLine());
                         assertThat(response.statusCode()).isEqualTo(expected.statusCode());
                         assertThat(response.headers()).isEqualTo(expected.headers());
-                        assertThat(Util.messageBodyWithoutNonIdempotentHeaders(response.body())).isEqualTo(Util.messageBodyWithoutNonIdempotentHeaders(expected.body()));
+                        assertThat(Util.messageBodyWithoutNonIdempotentHeaders(response.body())).isEqualTo(Util.messageBodyWithoutNonIdempotentHeaders(
+                            expected.body()));
                     })
                     .onFailure(failure -> {
                         throw new AssertionError("This should not happen");
@@ -48,7 +49,12 @@ public class EntryPointTest {
         return Stream.of(
             Arguments.of(
                 "httpc post -v -h Content-Type: application/json -f " + Util.absolutePathFromRelativePath("in1.txt") + " http://httpbin.org/anything",
-                new Response(Request.builder().method(HttpMethod.POST).url("http://httpbin.org/anything").headers(List.of("Content-Type: application/json")).body("{ \"Assignment\": 1 }").build(), "\n" +
+                new Response(Request.builder()
+                    .method(HttpMethod.POST)
+                    .url("http://httpbin.org/anything")
+                    .headers(List.of("Content-Type: application/json"))
+                    .body("{ \"Assignment\": 1 }")
+                    .build(), "\n" +
                     "HTTP/1.1 200 OK\n" +
                     "Date: Sun, 09 Feb 2020 18:15:05 GMT\n" +
                     "Content-Type: application/json\n" +
@@ -78,7 +84,12 @@ public class EntryPointTest {
             ),
             Arguments.of(
                 "httpc post -v -h Content-Type: application/json -f " + Util.absolutePathFromRelativePath("in1.txt") + " http://httpbin.org/anything",
-                new Response(Request.builder().method(HttpMethod.POST).url("http://httpbin.org/anything").headers(List.of("Content-Type: application/json")).in(Util.absolutePathFromRelativePath("in1.txt")).build(), "\n" +
+                new Response(Request.builder()
+                    .method(HttpMethod.POST)
+                    .url("http://httpbin.org/anything")
+                    .headers(List.of("Content-Type: application/json"))
+                    .in(Util.absolutePathFromRelativePath("in1.txt"))
+                    .build(), "\n" +
                     "HTTP/1.1 200 OK\n" +
                     "Date: Sun, 09 Feb 2020 18:15:05 GMT\n" +
                     "Content-Type: application/json\n" +
@@ -108,7 +119,12 @@ public class EntryPointTest {
             ),
             Arguments.of(
                 "httpc post -v -h Content-Type: application/json -d { \"Assignment\" : { \"SubObject\": \"Quoted'Character\" }} http://httpbin.org/anything",
-                new Response(Request.builder().method(HttpMethod.POST).url("http://httpbin.org/anything").headers(List.of("Content-Type: application/json")).body("{ \"Assignment\" : { \"SubObject\": \"Quoted'Character\" }}").build(), "\n" +
+                new Response(Request.builder()
+                    .method(HttpMethod.POST)
+                    .url("http://httpbin.org/anything")
+                    .headers(List.of("Content-Type: application/json"))
+                    .body("{ \"Assignment\" : { \"SubObject\": \"Quoted'Character\" }}")
+                    .build(), "\n" +
                     "HTTP/1.1 200 OK\n" +
                     "Date: Sun, 09 Feb 2020 20:23:27 GMT\n" +
                     "Content-Type: application/json\n" +
@@ -140,7 +156,12 @@ public class EntryPointTest {
             ),
             Arguments.of(
                 "httpc post -v -h Content-Type: application/json -f " + Util.absolutePathFromRelativePath("in2.txt") + " http://httpbin.org/anything",
-                new Response(Request.builder().method(HttpMethod.POST).url("http://httpbin.org/anything").headers(List.of("Content-Type: application/json")).body("url = https://www.google.com").build(), "\n" +
+                new Response(Request.builder()
+                    .method(HttpMethod.POST)
+                    .url("http://httpbin.org/anything")
+                    .headers(List.of("Content-Type: application/json"))
+                    .body("url = https://www.google.com")
+                    .build(), "\n" +
                     "HTTP/1.1 200 OK\n" +
                     "Date: Sun, 09 Feb 2020 18:15:05 GMT\n" +
                     "Content-Type: application/json\n" +

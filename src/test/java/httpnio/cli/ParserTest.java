@@ -1,6 +1,6 @@
-package httpsocketclient.cli;
+package httpnio.cli;
 
-import httpsocketclient.client.EntryPoint;
+import httpnio.client.EntryPoint;
 import io.vavr.control.Either;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -64,7 +64,14 @@ class ParserTest {
                     "   --out [-o] /file/to/output    Outputs the response of the HTTP request to a file."),
             Arguments.of(
                 "httpc get --header Content-Type:application/json --header Content-Type:application/html http://postman-echo.com/get?foo1=bar1&foo2=bar2",
-                new EntryPoint("http://postman-echo.com/get?foo1=bar1&foo2=bar2", null, false, List.of("Content-Type:application/json", "Content-Type:application/html"), null, null, null))
+                new EntryPoint(
+                    "http://postman-echo.com/get?foo1=bar1&foo2=bar2",
+                    null,
+                    false,
+                    List.of("Content-Type:application/json", "Content-Type:application/html"),
+                    null,
+                    null,
+                    null))
         );
     }
 

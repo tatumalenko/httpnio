@@ -1,7 +1,7 @@
-package httpsocketclient.client;
+package httpnio.client;
 
-import httpsocketclient.Const;
-import httpsocketclient.server.Response;
+import httpnio.Const;
+import httpnio.server.Response;
 import io.vavr.control.Try;
 
 import java.io.IOException;
@@ -23,13 +23,18 @@ public class Client implements Gettable, Postable {
         try {
             return future.get(Const.TIMEOUT_LIMIT_SECONDS, TimeUnit.SECONDS);
         } catch (final InterruptedException ie) {
-            throw new RequestError("InterruptedException: The task was interrupted. Please ensure the request is valid.\n" + (ie.getMessage() != null ? ie.getMessage() : ""));
+            throw new RequestError("InterruptedException: The task was interrupted. Please ensure the request is valid.\n" + (ie.getMessage() != null ? ie
+                .getMessage() : ""));
         } catch (final ExecutionException ee) {
-            throw new RequestError("ExecutionException: An error occurred during the execution of the task. Please ensure the request is valid.\n" + (ee.getMessage() != null ? ee.getMessage() : ""));
+            throw new RequestError(
+                "ExecutionException: An error occurred during the execution of the task. Please ensure the request is valid.\n" + (ee.getMessage() != null ? ee
+                    .getMessage() : ""));
         } catch (final TimeoutException te) {
-            throw new RequestError("TimeoutException: The request was not received after " + Const.TIMEOUT_LIMIT_SECONDS + " seconds. Please ensure the request is valid or retrieve a smaller payload.\n" + (te.getMessage() != null ? te.getMessage() : ""));
+            throw new RequestError("TimeoutException: The request was not received after " + Const.TIMEOUT_LIMIT_SECONDS + " seconds. Please ensure the request is valid or retrieve a smaller payload.\n" + (te
+                .getMessage() != null ? te.getMessage() : ""));
         } catch (final Exception e) {
-            throw new RequestError("Exception: An unknown error occurred. Please ensure the request is valid.\n" + (e.getMessage() != null ? e.getMessage() : ""));
+            throw new RequestError("Exception: An unknown error occurred. Please ensure the request is valid.\n" + (e.getMessage() != null ? e
+                .getMessage() : ""));
         }
     }
 

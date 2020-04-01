@@ -1,4 +1,4 @@
-package httpsocketclient.cli;
+package httpnio.cli;
 
 import io.vavr.control.Either;
 import io.vavr.control.Try;
@@ -139,13 +139,20 @@ public final class Parser<T> {
         }
     }
 
-    private static <T> void setField(final T instance, final Class<T> clazz, final String name, final Object value) throws NoSuchFieldException, IllegalAccessException {
+    private static <T> void setField(
+        final T instance,
+        final Class<T> clazz,
+        final String name,
+        final Object value) throws NoSuchFieldException, IllegalAccessException {
         final Field field = clazz.getDeclaredField(name);
         field.setAccessible(true);
         field.set(instance, value);
     }
 
-    private static <T> Object getField(final T instance, final Class<T> clazz, final String name) throws IllegalAccessException, NoSuchFieldException {
+    private static <T> Object getField(
+        final T instance,
+        final Class<T> clazz,
+        final String name) throws IllegalAccessException, NoSuchFieldException {
         final Field field = clazz.getDeclaredField(name);
         field.setAccessible(true);
         return field.get(instance);
@@ -223,7 +230,9 @@ public final class Parser<T> {
             final var sb = new StringBuilder();
             sb.append(String.format("%n"));
             sb.append(String.format("%s: %s%n", command.name(), command.description()));
-            sb.append(String.format("%nUsage:%n   %s" + (subCommands.isEmpty() ? "" : " <subCommand>") + " [flags] [options]%n", command.name()));
+            sb.append(String.format(
+                "%nUsage:%n   %s" + (subCommands.isEmpty() ? "" : " <subCommand>") + " [flags] [options]%n",
+                command.name()));
 
             if (!subCommands.isEmpty()) {
                 sb.append(String.format("\nThe subCommands are:%n"));
@@ -264,20 +273,31 @@ public final class Parser<T> {
         }
 
         String help(final SubCommand subCommand) {
-            final List<Option> validOptions = options.stream().filter(e -> Arrays.asList(e.subCommands()).contains(subCommand.name())).collect(Collectors.toList());
-            final List<Flag> validFlags = flags.stream().filter(e -> Arrays.asList(e.subCommands()).contains(subCommand.name())).collect(Collectors.toList());
+            final List<Option> validOptions = options.stream()
+                .filter(e -> Arrays.asList(e.subCommands()).contains(subCommand.name()))
+                .collect(Collectors.toList());
+            final List<Flag> validFlags = flags.stream()
+                .filter(e -> Arrays.asList(e.subCommands()).contains(subCommand.name()))
+                .collect(Collectors.toList());
 
             final var sb = new StringBuilder();
             sb.append(String.format("%n"));
             sb.append(String.format("%nSubCommand (%s): %s", subCommand.name(), subCommand.description()));
-            sb.append(String.format("%nUsage:%n   %s %s [flags] [options] %s", command.name(), subCommand.name(), subCommand.argument().name()));
+            sb.append(String.format(
+                "%nUsage:%n   %s %s [flags] [options] %s",
+                command.name(),
+                subCommand.name(),
+                subCommand.argument().name()));
             sb.append(String.format("%nFlags:"));
             for (final var validFlag : validFlags) {
                 sb.append(String.format("%n   %-30s%s", validFlag.alias()[0] + " [" + validFlag.alias()[1] + "]", validFlag.description()));
             }
             sb.append(String.format("%nOptions:"));
             for (final var validOption : validOptions) {
-                sb.append(String.format("%n   %-30s%s", validOption.alias()[0] + " [" + validOption.alias()[1] + "] " + validOption.argument().format(), validOption.description()));
+                sb.append(String.format(
+                    "%n   %-30s%s",
+                    validOption.alias()[0] + " [" + validOption.alias()[1] + "] " + validOption.argument().format(),
+                    validOption.description()));
             }
 
             return sb.toString();
