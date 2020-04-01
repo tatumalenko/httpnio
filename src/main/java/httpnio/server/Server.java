@@ -1,8 +1,8 @@
-package httpsocketclient.server;
+package httpnio.server;
 
-import httpsocketclient.Const;
-import httpsocketclient.client.Request;
-import httpsocketclient.client.RequestError;
+import httpnio.Const;
+import httpnio.client.Request;
+import httpnio.client.RequestError;
 
 import java.io.BufferedReader;
 import java.io.IOException;

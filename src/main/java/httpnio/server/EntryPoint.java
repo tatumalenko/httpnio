@@ -1,7 +1,7 @@
-package httpsocketclient.server;
+package httpnio.server;
 
-import httpsocketclient.Const;
-import httpsocketclient.cli.*;
+import httpnio.Const;
+import httpnio.cli.*;
 import io.vavr.control.Either;
 import io.vavr.control.Try;
 import lombok.AllArgsConstructor;
@@ -47,8 +47,8 @@ public class EntryPoint {
     String directory;
 
     public static void entryPoint(final String[] args) {
-        final Parser<httpsocketclient.server.EntryPoint> parser = new Parser<>(httpsocketclient.server.EntryPoint.class);
-        final Try<Either<String, httpsocketclient.server.EntryPoint>> result = parser.parse(String.join(" ", args));
+        final Parser<httpnio.server.EntryPoint> parser = new Parser<>(httpnio.server.EntryPoint.class);
+        final Try<Either<String, httpnio.server.EntryPoint>> result = parser.parse(String.join(" ", args));
 
         result
             .onSuccess(success -> {
@@ -67,7 +67,7 @@ public class EntryPoint {
             });
     }
 
-    static void exec(final httpsocketclient.server.EntryPoint ep) {
+    static void exec(final httpnio.server.EntryPoint ep) {
         try {
             final ServerConfiguration serverConfiguration = new ServerConfiguration(ep.port, ep.verbose, ep.directory);
             new Server(serverConfiguration).run(new FileServerProtocol(serverConfiguration.directory()));

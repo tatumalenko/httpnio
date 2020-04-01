@@ -1,4 +1,4 @@
-package httpsocketclient.server;
+package httpnio.server;
 
 public class FileServerProtocolError extends Throwable {
     public FileServerProtocolError(final String message) {

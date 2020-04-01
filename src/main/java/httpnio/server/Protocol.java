@@ -1,6 +1,6 @@
-package httpsocketclient.server;
+package httpnio.server;
 
-import httpsocketclient.client.Request;
+import httpnio.client.Request;
 
 import java.io.IOException;
 

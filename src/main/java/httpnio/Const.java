@@ -1,4 +1,4 @@
-package httpsocketclient;
+package httpnio;
 
 public interface Const {
     String HTTPC = "httpc";

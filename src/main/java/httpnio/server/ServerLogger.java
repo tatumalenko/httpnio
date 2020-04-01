@@ -1,4 +1,4 @@
-package httpsocketclient.server;
+package httpnio.server;
 
 import lombok.AllArgsConstructor;
 
@@ -8,7 +8,7 @@ import java.util.Arrays;
 public final class ServerLogger {
 
     private final boolean standardOutput;
-    
+
     private final String id;
 
     public void debug(final String text) {

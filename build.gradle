@@ -13,7 +13,7 @@ plugins {
 }
 
 application {
-    mainClassName = "httpsocketclient.EntryPoint"
+    mainClassName = "httpnio.EntryPoint"
 }
 
 repositories {

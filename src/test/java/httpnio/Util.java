@@ -1,6 +1,6 @@
-package httpsocketclient;
+package httpnio;
 
-import httpsocketclient.client.EntryPointTest;
+import httpnio.client.EntryPointTest;
 
 import java.io.File;
 import java.util.Arrays;

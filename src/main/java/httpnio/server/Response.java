@@ -1,7 +1,7 @@
-package httpsocketclient.server;
+package httpnio.server;
 
-import httpsocketclient.Const;
-import httpsocketclient.client.Request;
+import httpnio.Const;
+import httpnio.client.Request;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -73,7 +73,10 @@ public class Response {
         if (headers == null) {
             return "";
         }
-        return statusLine() + Const.CRLF + headers.entrySet().stream().map(e -> e.getKey() + ": " + e.getValue()).collect(Collectors.joining("\n"));
+        return statusLine() + Const.CRLF + headers.entrySet()
+            .stream()
+            .map(e -> e.getKey() + ": " + e.getValue())
+            .collect(Collectors.joining("\n"));
     }
 
     @Override

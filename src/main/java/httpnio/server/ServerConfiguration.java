@@ -1,4 +1,4 @@
-package httpsocketclient.server;
+package httpnio.server;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
