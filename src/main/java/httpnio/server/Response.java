@@ -2,6 +2,8 @@ package httpnio.server;
 
 import httpnio.Const;
 import httpnio.client.Request;
+import io.vavr.Tuple;
+import io.vavr.Tuple2;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -9,6 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
@@ -63,6 +66,22 @@ public class Response {
                 return value2;
             }));
 
+    }
+
+    public Response(final Request request, final String response) {
+        this(request, messageHeaderAndBody(response)._1(), messageHeaderAndBody(response)._2());
+    }
+
+    private static Tuple2<String, String> messageHeaderAndBody(final String response) {
+        try {
+            final var lines = List.of(response.split("\n"));
+            final var lastLineOfHeaderIndex = response.indexOf("\n");
+            final var messageHeader = lines.subList(0, lastLineOfHeaderIndex);
+            final var messageBody = lines.subList(lastLineOfHeaderIndex + 1, lines.size());
+            return Tuple.of(String.join("\n", messageHeader), String.join("\n", messageBody));
+        } catch (final Exception e) {
+            return Tuple.of("", response);
+        }
     }
 
     public String statusLine() {

@@ -1,3 +1,4 @@
 # ./httpc post -v -d '{ "hey": "there" }' https://postman-echo.com/post
 # ./httpc 'post -v -d { "hey": "there" } https://postman-echo.com/post?'
+# make build && java -jar build/libs/httpsocketclient.jar httpc "$@"
 java -jar build/libs/httpsocketclient.jar httpc "$@"

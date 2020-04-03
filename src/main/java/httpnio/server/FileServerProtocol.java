@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class FileServerProtocol implements Protocol {
+public class FileServerProtocol implements ApplicationLayerProtocol {
 
     final Path path;
 
@@ -40,7 +40,7 @@ public class FileServerProtocol implements Protocol {
     }
 
     @Override
-    public Protocol copy() throws IOException {
+    public ApplicationLayerProtocol copy() throws IOException {
         return new FileServerProtocol(pathAsString);
     }
 
@@ -106,7 +106,7 @@ public class FileServerProtocol implements Protocol {
                     ))
                     .body("The specified file could not be read: " + request.path() + "\n" + e.getMessage())
                     .build();
-            } catch (final FileServerProtocolError e) {
+            } catch (final FileServerProtocol.Error e) {
                 return Response.builder()
                     .statusCode("401")
                     .statusMessage("UNAUTHORIZED ACCESS")
@@ -140,7 +140,7 @@ public class FileServerProtocol implements Protocol {
                 ))
                 .body("Could not write to file: " + request.path() + "\n" + e.getMessage())
                 .build();
-        } catch (final FileServerProtocolError e) {
+        } catch (final FileServerProtocol.Error e) {
             return Response.builder()
                 .statusCode("401")
                 .statusMessage("UNAUTHORIZED ACCESS")
@@ -160,11 +160,11 @@ public class FileServerProtocol implements Protocol {
         return files().stream().filter(e -> e.getAbsolutePath().equals(pathAsString + relativeFilePath)).findFirst().orElse(null);
     }
 
-    private String read(final String relativeFilePath) throws IOException, FileServerProtocolError {
+    private String read(final String relativeFilePath) throws IOException, FileServerProtocol.Error {
         final Path pathToFile = Paths.get(pathAsString + relativeFilePath);
 
         if (isUnauthorizedPathAccess(pathToFile)) {
-            throw new FileServerProtocolError("Unauthorized access to path outside root working directory: " + pathAsString);
+            throw new FileServerProtocol.Error("Unauthorized access to path outside root working directory: " + pathAsString);
         }
 
         if (Files.isDirectory(pathToFile)) {
@@ -190,11 +190,11 @@ public class FileServerProtocol implements Protocol {
             .collect(Collectors.joining("\n"));
     }
 
-    private void write(final String relativeFilePath, final String content) throws IOException, FileServerProtocolError {
+    private void write(final String relativeFilePath, final String content) throws IOException, FileServerProtocol.Error {
         final Path pathToFile = Paths.get(pathAsString + relativeFilePath);
 
         if (isUnauthorizedPathAccess(pathToFile)) {
-            throw new FileServerProtocolError("Unauthorized access to path outside root working directory: " + pathAsString);
+            throw new FileServerProtocol.Error("Unauthorized access to path outside root working directory: " + pathAsString);
         }
 
         if (!Files.exists(pathToFile.getParent())) {
@@ -237,4 +237,11 @@ public class FileServerProtocol implements Protocol {
     private boolean isUnauthorizedPathAccess(final Path pathRequested) throws IOException {
         return !(pathRequested.toFile().getCanonicalPath().startsWith(pathAsString));
     }
+
+    public class Error extends Throwable {
+        public Error(final String message) {
+            super(message);
+        }
+    }
+
 }

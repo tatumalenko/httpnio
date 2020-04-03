@@ -6,6 +6,7 @@ import lombok.Builder;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -22,6 +23,8 @@ public class Request {
 
     private final URL url;
 
+    private final URL routerAddress;
+
     private final Map<String, String> headers;
 
     private final String body;
@@ -36,6 +39,14 @@ public class Request {
 
     public URL url() {
         return url;
+    }
+
+    public InetSocketAddress socketAddress() {
+        return url.socketAddress();
+    }
+
+    public InetSocketAddress routerAddress() {
+        return routerAddress.socketAddress();
     }
 
     public String host() {
@@ -69,6 +80,7 @@ public class Request {
     public static class Builder {
         private HttpMethod method = null;
         private String url = null;
+        private String routerAddress = null;
         private List<String> headers = null;
         private String body = null;
         private String in = null;
@@ -81,6 +93,11 @@ public class Request {
 
         public Builder url(final String url) {
             this.url = url;
+            return this;
+        }
+
+        public Builder routerAddress(final String address) {
+            routerAddress = address;
             return this;
         }
 
@@ -141,7 +158,8 @@ public class Request {
 
             return new Request(
                 method,
-                new URL(url),
+                URL.fromSpec(url),
+                URL.fromSpec("localhost:3000"),
                 mappedHeaders,
                 body,
                 in != null ? new File(in) : null,

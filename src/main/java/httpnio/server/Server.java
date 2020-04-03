@@ -3,72 +3,188 @@ package httpnio.server;
 import httpnio.Const;
 import httpnio.client.Request;
 import httpnio.client.RequestError;
+import httpnio.common.Packet;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.experimental.Accessors;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.DatagramChannel;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 @SuppressWarnings("squid:S2189")
 public class Server {
 
-    private final ServerConfiguration serverConfiguration;
+    private final ReentrantLock lock = new ReentrantLock();
 
-    private final ServerLogger log;
+    private final Configuration configuration;
 
-    public Server(final ServerConfiguration serverConfiguration) {
-        this.serverConfiguration = serverConfiguration;
-        log = new ServerLogger(serverConfiguration.verbose(), "main-server-thread");
+    private final Logger log;
+
+    public Server(final Configuration configuration) {
+        this.configuration = configuration;
+        log = new Logger(configuration.verbose(), "main-server-thread");
     }
 
-    public void run(final Protocol protocol) {
+    public void run(final ApplicationLayerProtocol protocol) {
         log.debug("Starting server");
-        final var poolSize = 10;
+        final var poolSize = 2;
         final var pool = Executors.newFixedThreadPool(poolSize);
         final var port =
-            serverConfiguration.port() == 0 || serverConfiguration.port() == -1
+            configuration.port() == 0 || configuration.port() == -1
                 ? Const.DEFAULT_SERVER_PORT
-                : serverConfiguration.port();
+                : configuration.port();
         log.debug("Using port " + port);
 
         for (; ; ) {
-            try (
-                final ServerSocket serverSocket = new ServerSocket(port)
-            ) {
-                pool.execute(new SocketHandler(serverSocket.accept(), protocol.copy(), serverConfiguration.verbose()));
+            pool.execute(new UDPHandler(lock, configuration, protocol));
 
-            } catch (final IOException | IllegalAccessException e) {
+            try {
+                pool.invokeAny(List.of(
+                    () -> new UDPHandler(lock, configuration, protocol),
+                    () -> new UDPHandler(lock, configuration, protocol)
+                ));
+            } catch (final InterruptedException | ExecutionException e) {
                 e.printStackTrace();
             }
         }
     }
 
-    private static class SocketHandler implements Runnable {
+    private static class UDPHandler implements Runnable {
 
-        final Socket socket;
+        private final ReentrantLock lock;
 
-        final Protocol protocol;
+        private final ApplicationLayerProtocol protocol;
 
-        final boolean verbose;
+        private final Configuration configuration;
 
-        ServerLogger log;
+        private Logger log;
 
-        public SocketHandler(final Socket socket, final Protocol protocol, final boolean verbose) {
-            this.socket = socket;
+        public UDPHandler(final ReentrantLock lock, final Configuration configuration, final ApplicationLayerProtocol protocol) {
+            this.lock = lock;
             this.protocol = protocol;
-            this.verbose = verbose;
+            this.configuration = configuration;
         }
 
         @Override
         public void run() {
-            log = new ServerLogger(verbose, Thread.currentThread().getName());
+            lock.lock();
+            log = new Server.Logger(configuration.verbose(), Thread.currentThread().getName());
+            try (final DatagramChannel channel = DatagramChannel.open()) {
+
+                channel.configureBlocking(true);
+                channel.bind(new InetSocketAddress(configuration.port()));
+                log.debug("EchoServer is listening at " + channel.getLocalAddress());
+                final ByteBuffer buf = ByteBuffer
+                    .allocate(Packet.MAX_LEN)
+                    .order(ByteOrder.BIG_ENDIAN);
+
+                buf.clear();
+                final SocketAddress router = channel.receive(buf);
+
+                lock.unlock();
+
+                // Parse a packet from the received raw data.
+                buf.flip();
+                final Packet packet = Packet.fromBuffer(buf);
+                buf.flip();
+
+                final String payload = new String(packet.getPayload(), UTF_8);
+                log.debug("Packet: " + packet);
+                log.debug("Payload: " + payload);
+                log.debug("Router: " + router);
+
+                // Send the response to the router not the client.
+                // The peer address of the packet is the address of the client already.
+                // We can use toBuilder to copy properties of the current packet.
+                // This demonstrate how to create a new packet from an existing packet.
+                final Packet resp = packet.toBuilder()
+                    .setPayload(payload.getBytes())
+                    .create();
+                channel.send(resp.toBuffer(), router);
+            } catch (final IOException e) {
+                e.printStackTrace();
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    @AllArgsConstructor
+    @Getter
+    @Accessors(fluent = true)
+    public static final class Configuration {
+        private final TransportLayerProtocol protocol;
+
+        private final int port;
+
+        private final boolean verbose;
+    }
+
+    @AllArgsConstructor
+    public static final class Logger {
+
+        private final boolean standardOutput;
+
+        private final String id;
+
+        public void debug(final String text) {
+            if (standardOutput) {
+                System.out.println();
+                Arrays.stream(text.split("\n"))
+                    .forEach(line -> System.out.println(id + ": " + line));
+            }
+        }
+
+        public void error(final String text) {
+            if (standardOutput) {
+                System.out.println();
+                System.err.println(id + ": " + text);
+            }
+        }
+    }
+
+    private static class TCPHandler implements Runnable {
+
+        private final ReentrantLock lock;
+
+        private final ApplicationLayerProtocol protocol;
+
+        private final Server.Configuration configuration;
+
+        private Server.Logger log;
+
+        public TCPHandler(final ReentrantLock lock, final ApplicationLayerProtocol protocol, final Server.Configuration configuration) {
+            this.lock = lock;
+            this.protocol = protocol;
+            this.configuration = configuration;
+        }
+
+        @Override
+        public void run() {
+            lock.lock();
+            log = new Server.Logger(configuration.verbose(), Thread.currentThread().getName());
             try (
+                final Socket socket = new ServerSocket(configuration.port()).accept();
                 final PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                 final BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))
             ) {
+                lock.unlock();
                 log.debug("Connection accepted");
                 boolean keepAlive = true;
 
@@ -123,8 +239,9 @@ public class Server {
                 }
             } catch (final IOException | RequestError e) {
                 e.printStackTrace();
+            } finally {
+                lock.unlock();
             }
         }
     }
-
 }

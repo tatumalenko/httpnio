@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
@@ -26,7 +27,7 @@ public class EntryPoint {
         argument = @Argument(
             name = "url",
             format = "https://some-website.ca",
-            regex = "(^https?://\\S+$)",
+            regex = "(^(https://)?\\S+$)",
             description = "The URL of the request."),
         description = "Get executes a HTTP GET request for a given URL.")
     String get;
@@ -36,7 +37,7 @@ public class EntryPoint {
         argument = @Argument(
             name = "url",
             format = "https://some-website.ca",
-            regex = "(^https?://\\S+$)",
+            regex = "(^(https://)?\\S+$)",
             description = "The URL of the request."),
         description = "Post executes a HTTP POST request for a given URL with inline data or from file.")
     String post;
@@ -157,11 +158,14 @@ public class EntryPoint {
             return Try.of(() -> new Client().request(request));
         } catch (final ParseError e) {
             return Try.failure(e);
+        } catch (final MalformedURLException e) {
+            return Try.failure(new RequestError("Something went wrong while trying to parse the url. \n" + e.getClass()
+                .getSimpleName() + ": " + e.getMessage()));
         } catch (final IOException e) {
-            return Try.failure(new RequestError("Something went wrong while trying to read the contents of the input file. " + e.getClass()
+            return Try.failure(new RequestError("Something went wrong while trying to read the contents of the input file. \n" + e.getClass()
                 .getSimpleName() + ": " + e.getMessage()));
         } catch (final RequestError e) {
-            return Try.failure(new RequestError("Something went wrong while processing the request. " + e.getClass()
+            return Try.failure(new RequestError("Something went wrong while processing the request. \n" + e.getClass()
                 .getSimpleName() + ": " + e.getMessage()));
         }
     }

@@ -9,8 +9,6 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-import java.io.IOException;
-
 @NoArgsConstructor
 @AllArgsConstructor
 @ToString
@@ -69,9 +67,12 @@ public class EntryPoint {
 
     static void exec(final httpnio.server.EntryPoint ep) {
         try {
-            final ServerConfiguration serverConfiguration = new ServerConfiguration(ep.port, ep.verbose, ep.directory);
-            new Server(serverConfiguration).run(new FileServerProtocol(serverConfiguration.directory()));
-        } catch (final IOException e) {
+            final Server.Configuration configuration = new Server.Configuration(
+                TransportLayerProtocol.of("UDP").apply("").get(),
+                ep.port,
+                ep.verbose);
+            new Server(configuration).run(new FileServerProtocol(ep.directory));
+        } catch (final Exception e) {
             e.printStackTrace();
         }
     }
