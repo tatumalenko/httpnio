@@ -2,7 +2,9 @@ package httpnio.client;
 
 import httpnio.Util;
 import httpnio.cli.Parser;
-import httpnio.server.Response;
+import httpnio.common.HTTPMethod;
+import httpnio.common.HTTPRequest;
+import httpnio.common.HTTPResponse;
 import io.vavr.control.Try;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -20,7 +22,7 @@ public class EntryPointTest {
 
     @ParameterizedTest
     @MethodSource("successProvider")
-    void execReturnsSuccess(final String in, final Response expected) {
+    void execReturnsSuccess(final String in, final HTTPResponse expected) {
         final var parser = new Parser<>(EntryPoint.class);
         final var ep = parser.parse(in);
         ep
@@ -47,12 +49,12 @@ public class EntryPointTest {
             });
     }
 
-    static Stream<Arguments> successProvider() throws IOException, RequestError {
+    static Stream<Arguments> successProvider() throws IOException, HTTPRequest.RequestError {
         return Stream.of(
             Arguments.of(
                 "httpc post -v -h Content-Type: application/json -f " + Util.absolutePathFromRelativePath("in1.txt") + " http://httpbin.org/anything",
-                new Response(Request.builder()
-                    .method(HttpMethod.POST)
+                new HTTPResponse(HTTPRequest.builder()
+                    .method(HTTPMethod.POST)
                     .url("http://httpbin.org/anything")
                     .headers(List.of("Content-Type: application/json"))
                     .body("{ \"Assignment\": 1 }")
@@ -86,8 +88,8 @@ public class EntryPointTest {
             ),
             Arguments.of(
                 "httpc post -v -h Content-Type: application/json -f " + Util.absolutePathFromRelativePath("in1.txt") + " http://httpbin.org/anything",
-                new Response(Request.builder()
-                    .method(HttpMethod.POST)
+                new HTTPResponse(HTTPRequest.builder()
+                    .method(HTTPMethod.POST)
                     .url("http://httpbin.org/anything")
                     .headers(List.of("Content-Type: application/json"))
                     .in(Util.absolutePathFromRelativePath("in1.txt"))
@@ -121,8 +123,8 @@ public class EntryPointTest {
             ),
             Arguments.of(
                 "httpc post -v -h Content-Type: application/json -d { \"Assignment\" : { \"SubObject\": \"Quoted'Character\" }} http://httpbin.org/anything",
-                new Response(Request.builder()
-                    .method(HttpMethod.POST)
+                new HTTPResponse(HTTPRequest.builder()
+                    .method(HTTPMethod.POST)
                     .url("http://httpbin.org/anything")
                     .headers(List.of("Content-Type: application/json"))
                     .body("{ \"Assignment\" : { \"SubObject\": \"Quoted'Character\" }}")
@@ -158,8 +160,8 @@ public class EntryPointTest {
             ),
             Arguments.of(
                 "httpc post -v -h Content-Type: application/json -f " + Util.absolutePathFromRelativePath("in2.txt") + " http://httpbin.org/anything",
-                new Response(Request.builder()
-                    .method(HttpMethod.POST)
+                new HTTPResponse(HTTPRequest.builder()
+                    .method(HTTPMethod.POST)
                     .url("http://httpbin.org/anything")
                     .headers(List.of("Content-Type: application/json"))
                     .body("url = https://www.google.com")

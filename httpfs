@@ -1,1 +1,3 @@
+# Examples:
+# ./httpfs -v -p 8007 -d '/Users/tatumalenko/dev/personal/httpsocketclient/build'
 ./gradlew build && java -jar build/libs/httpsocketclient.jar httpfs "$@"

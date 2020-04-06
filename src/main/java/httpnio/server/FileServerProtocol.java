@@ -1,6 +1,8 @@
 package httpnio.server;
 
-import httpnio.client.Request;
+import httpnio.common.ApplicationProtocol;
+import httpnio.common.HTTPRequest;
+import httpnio.common.HTTPResponse;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -14,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class FileServerProtocol implements ApplicationLayerProtocol {
+public class FileServerProtocol implements ApplicationProtocol.Response {
 
     final Path path;
 
@@ -35,16 +37,16 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
     }
 
     @Override
-    public Response response(final Request request) throws IOException {
+    public HTTPResponse response(final HTTPRequest request) throws IOException {
         return dispatchResponse(request);
     }
 
     @Override
-    public ApplicationLayerProtocol copy() throws IOException {
+    public ApplicationProtocol.Response copy() throws IOException {
         return new FileServerProtocol(pathAsString);
     }
 
-    private Response dispatchResponse(final Request request) {
+    private HTTPResponse dispatchResponse(final HTTPRequest request) {
         switch (request.method()) {
             case GET:
                 return get(request);
@@ -55,9 +57,9 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
         }
     }
 
-    private Response get(final Request request) {
+    private HTTPResponse get(final HTTPRequest request) {
         if (request.path().equalsIgnoreCase("/")) {
-            return Response.builder()
+            return HTTPResponse.builder()
                 .statusCode("200")
                 .statusMessage("OK")
                 .headers(Map.of(
@@ -70,7 +72,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
                 final String fileContent = read(request.path());
 
                 if (fileContent == null) {
-                    return Response.builder()
+                    return HTTPResponse.builder()
                         .statusCode("404")
                         .statusMessage("NOT FOUND")
                         .headers(Map.of(
@@ -80,7 +82,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
                         .build();
                 }
 
-                return Response.builder()
+                return HTTPResponse.builder()
                     .statusCode("200")
                     .statusMessage("OK")
                     .headers(Map.of(
@@ -89,7 +91,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
                     .body(fileContent)
                     .build();
             } catch (final MalformedInputException e) {
-                return Response.builder()
+                return HTTPResponse.builder()
                     .statusCode("500")
                     .statusMessage("INTERNAL SERVER ERROR")
                     .headers(Map.of(
@@ -98,7 +100,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
                     .body("Contents of file contain non UTF-8 character encodings: " + request.path() + "\n" + e.getMessage())
                     .build();
             } catch (final IOException e) {
-                return Response.builder()
+                return HTTPResponse.builder()
                     .statusCode("500")
                     .statusMessage("INTERNAL SERVER ERROR")
                     .headers(Map.of(
@@ -107,7 +109,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
                     .body("The specified file could not be read: " + request.path() + "\n" + e.getMessage())
                     .build();
             } catch (final FileServerProtocol.Error e) {
-                return Response.builder()
+                return HTTPResponse.builder()
                     .statusCode("401")
                     .statusMessage("UNAUTHORIZED ACCESS")
                     .headers(Map.of(
@@ -119,11 +121,11 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
         }
     }
 
-    private Response post(final Request request) {
+    private HTTPResponse post(final HTTPRequest request) {
         try {
             write(request.path(), request.body());
 
-            return Response.builder()
+            return HTTPResponse.builder()
                 .statusCode("200")
                 .statusMessage("OK")
                 .headers(Map.of(
@@ -132,7 +134,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
                 .body("File contents successfully written to: " + request.path() + "\n" + read(request.path()))
                 .build();
         } catch (final IOException e) {
-            return Response.builder()
+            return HTTPResponse.builder()
                 .statusCode("500")
                 .statusMessage("INTERNAL SERVER ERROR")
                 .headers(Map.of(
@@ -141,7 +143,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
                 .body("Could not write to file: " + request.path() + "\n" + e.getMessage())
                 .build();
         } catch (final FileServerProtocol.Error e) {
-            return Response.builder()
+            return HTTPResponse.builder()
                 .statusCode("401")
                 .statusMessage("UNAUTHORIZED ACCESS")
                 .headers(Map.of(
@@ -164,7 +166,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
         final Path pathToFile = Paths.get(pathAsString + relativeFilePath);
 
         if (isUnauthorizedPathAccess(pathToFile)) {
-            throw new FileServerProtocol.Error("Unauthorized access to path outside root working directory: " + pathAsString);
+            throw new Error("Unauthorized access to path outside root working directory: " + pathAsString);
         }
 
         if (Files.isDirectory(pathToFile)) {
@@ -194,7 +196,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
         final Path pathToFile = Paths.get(pathAsString + relativeFilePath);
 
         if (isUnauthorizedPathAccess(pathToFile)) {
-            throw new FileServerProtocol.Error("Unauthorized access to path outside root working directory: " + pathAsString);
+            throw new Error("Unauthorized access to path outside root working directory: " + pathAsString);
         }
 
         if (!Files.exists(pathToFile.getParent())) {
@@ -238,7 +240,7 @@ public class FileServerProtocol implements ApplicationLayerProtocol {
         return !(pathRequested.toFile().getCanonicalPath().startsWith(pathAsString));
     }
 
-    public class Error extends Throwable {
+    public static class Error extends Throwable {
         public Error(final String message) {
             super(message);
         }

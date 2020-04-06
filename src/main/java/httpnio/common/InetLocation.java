@@ -1,4 +1,4 @@
-package httpnio.client;
+package httpnio.common;
 
 import httpnio.Const;
 import io.vavr.Tuple;
@@ -18,7 +18,7 @@ import java.util.Optional;
 @Getter
 @Accessors(fluent = true)
 @Builder(toBuilder = true)
-public final class URL {
+public final class InetLocation {
 
     private final java.net.URL url;
 
@@ -34,10 +34,10 @@ public final class URL {
 
     private final int port;
 
-    public static URL fromSpec(final String spec) throws MalformedURLException, UnknownHostException {
-        final URLBuilder[] url = new URLBuilder[1];
+    public static InetLocation fromSpec(final String spec) throws MalformedURLException, UnknownHostException {
+        final InetLocationBuilder[] url = new InetLocationBuilder[1];
         tryUrlOrSocketAddress(spec).peekLeft(javaNetUrl -> {
-            url[0] = URL.builder()
+            url[0] = InetLocation.builder()
                 .protocol(javaNetUrl.getProtocol())
                 .port(javaNetUrl.getPort() != -1 ? javaNetUrl.getPort() : Const.DEFAULT_PORT)
                 .host(javaNetUrl.getHost())
@@ -45,7 +45,7 @@ public final class URL {
                 .query(javaNetUrl.getQuery())
                 .url(javaNetUrl);
         }).peek(socketAddress -> {
-            url[0] = URL.builder()
+            url[0] = InetLocation.builder()
                 .protocol("udp")
                 .port(socketAddress.getPort() != -1 ? socketAddress.getPort() : Const.DEFAULT_PORT)
                 .host(socketAddress.getHostName())

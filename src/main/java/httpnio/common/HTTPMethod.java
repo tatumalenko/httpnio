@@ -1,10 +1,10 @@
-package httpnio.client;
+package httpnio.common;
 
-public enum HttpMethod {
+public enum HTTPMethod {
     GET,
     POST;
 
-    public static HttpMethod of(final String value) {
+    public static HTTPMethod of(final String value) {
         switch (value) {
             case "GET":
             case "get":

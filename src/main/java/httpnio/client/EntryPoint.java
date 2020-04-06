@@ -2,7 +2,10 @@ package httpnio.client;
 
 import httpnio.Const;
 import httpnio.cli.*;
-import httpnio.server.Response;
+import httpnio.common.HTTPMethod;
+import httpnio.common.HTTPRequest;
+import httpnio.common.HTTPResponse;
+import httpnio.common.TransportProtocol;
 import io.vavr.control.Either;
 import io.vavr.control.Try;
 import lombok.AllArgsConstructor;
@@ -12,8 +15,6 @@ import lombok.ToString;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.List;
 
 @NoArgsConstructor
@@ -108,28 +109,29 @@ public class EntryPoint {
                 if (success.isRight()) {
                     exec(success.get())
                         .onSuccess(response -> {
-                            var whatToPrint = "";
-                            if (success.get().verbose) {
-                                whatToPrint += response.request();
-                                whatToPrint += response.messageHeader();
-                            }
-                            whatToPrint += response.body();
 
-                            if (success.get().out != null) {
-                                var whatToPrintInBytes = whatToPrint.getBytes();
-                                Try.of(() -> Files.write(Paths.get(success.get().out), whatToPrintInBytes))
-                                    .onSuccess(nothing -> System.out.println("Output saved in " + success.get().out))
-                                    .onFailure(failure -> System.out.println(
-                                        "Something went wrong trying to save the contents of the response to the file. " + failure.getClass()
-                                            .getSimpleName() + ": " + failure.getMessage()));
-                            } else {
-                                System.out.println(whatToPrint);
-                            }
+//                            var whatToPrint = "";
+//                            if (success.get().verbose) {
+//                                whatToPrint += response.request();
+//                                whatToPrint += response.messageHeader();
+//                            }
+//                            whatToPrint += response.body();
+//
+//                            if (success.get().out != null) {
+//                                var whatToPrintInBytes = whatToPrint.getBytes();
+//                                Try.of(() -> Files.write(Paths.get(success.get().out), whatToPrintInBytes))
+//                                    .onSuccess(nothing -> System.out.println("Output saved in " + success.get().out))
+//                                    .onFailure(failure -> System.out.println(
+//                                        "Something went wrong trying to save the contents of the response to the file. " + failure.getClass()
+//                                            .getSimpleName() + ": " + failure.getMessage()));
+//                            } else {
+//                                //System.out.println(whatToPrint);
+//                            }
                         })
                         .onFailure(failure -> {
-                            System.err.println(failure.getMessage());
-                            System.err.println(parser.help());
-                            System.exit(1);
+//                            System.err.println(failure.getMessage());
+//                            System.err.println(parser.help());
+//                            System.exit(1);
                         });
                 }
             })
@@ -140,14 +142,14 @@ public class EntryPoint {
             });
     }
 
-    static Try<Response> exec(final EntryPoint ep) {
+    static Try<HTTPResponse> exec(final EntryPoint ep) {
         try {
             if (ep.get == null && ep.post == null) {
                 throw new ParseError("At least one of the possible sub-commands and a url must be specified.");
             }
 
-            final var request = Request.builder()
-                .method(ep.get != null ? HttpMethod.GET : HttpMethod.POST)
+            final var request = HTTPRequest.builder()
+                .method(ep.get != null ? HTTPMethod.GET : HTTPMethod.POST)
                 .url(ep.get != null ? ep.get : ep.post)
                 .headers(ep.headers)
                 .body(ep.data)
@@ -155,17 +157,18 @@ public class EntryPoint {
                 .out(ep.out)
                 .build();
 
-            return Try.of(() -> new Client().request(request));
+            return Try.of(() -> new Client(TransportProtocol.of(TransportProtocol.Type.of("UDP"))).request(request));
         } catch (final ParseError e) {
             return Try.failure(e);
         } catch (final MalformedURLException e) {
-            return Try.failure(new RequestError("Something went wrong while trying to parse the url. \n" + e.getClass()
+            return Try.failure(new HTTPRequest.RequestError("Something went wrong while trying to parse the url. \n" + e.getClass()
                 .getSimpleName() + ": " + e.getMessage()));
         } catch (final IOException e) {
-            return Try.failure(new RequestError("Something went wrong while trying to read the contents of the input file. \n" + e.getClass()
+            return Try.failure(new HTTPRequest.RequestError("Something went wrong while trying to read the contents of the input file. \n" + e
+                .getClass()
                 .getSimpleName() + ": " + e.getMessage()));
-        } catch (final RequestError e) {
-            return Try.failure(new RequestError("Something went wrong while processing the request. \n" + e.getClass()
+        } catch (final HTTPRequest.RequestError e) {
+            return Try.failure(new HTTPRequest.RequestError("Something went wrong while processing the request. \n" + e.getClass()
                 .getSimpleName() + ": " + e.getMessage()));
         }
     }

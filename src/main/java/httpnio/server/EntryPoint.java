@@ -2,6 +2,8 @@ package httpnio.server;
 
 import httpnio.Const;
 import httpnio.cli.*;
+import httpnio.common.ApplicationProtocol;
+import httpnio.common.TransportProtocol;
 import io.vavr.control.Either;
 import io.vavr.control.Try;
 import lombok.AllArgsConstructor;
@@ -22,6 +24,13 @@ public class EntryPoint {
         required = false,
         description = "Prints debugging messages.")
     boolean verbose;
+
+    @Flag(
+        name = "udp",
+        alias = {"--udp"},
+        required = false,
+        description = "Use a Selective Repeat over UDP transport protocol implementation.")
+    boolean udp;
 
     @Option(
         name = "port",
@@ -66,14 +75,12 @@ public class EntryPoint {
     }
 
     static void exec(final httpnio.server.EntryPoint ep) {
-        try {
-            final Server.Configuration configuration = new Server.Configuration(
-                TransportLayerProtocol.of("UDP").apply("").get(),
-                ep.port,
-                ep.verbose);
-            new Server(configuration).run(new FileServerProtocol(ep.directory));
-        } catch (final Exception e) {
-            e.printStackTrace();
-        }
+        final Server.Configuration configuration = new Server.Configuration(
+            TransportProtocol.Type.of(ep.udp ? "UDP" : "TCP"),
+            ApplicationProtocol.Type.of("FS"),
+            ep.port,
+            ep.verbose,
+            ep.directory);
+        new Server(configuration).run();
     }
 }

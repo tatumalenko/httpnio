@@ -7,6 +7,7 @@ public interface Const {
     int DEFAULT_PORT = 80;
     int DEFAULT_SERVER_PORT = 8080;
     int TIMEOUT_LIMIT_SECONDS = 1000000000;
+    int DEFAULT_THREAD_POOL_SIZE = 2;
 
     interface Headers {
         String CONTENT_TYPE = "Content-Type";

@@ -1,13 +1,21 @@
-# httpsocketclient
+# httpnio
 
-To run the CLI program, ensure you have Java 12+ and Gradle 6.0.1+ installed.
+To run the CLI programs, ensure you have Java 12+ and Gradle 6.0.1+ installed.
 
 Build the project using `./gradlew build`.
 
-The program can then be ran through the shell script `httpc`.
+The program can then be ran through the shell script `httpc` or `httpfs`.
+
+`./httpc help` and `./httpfs help` are the commands for showing the help messages.
 
 Example usages are provided:
 ```shell
+# Server (TCP mode)
+$ ./httpfs -v -p 8007 -d '/Users/tatumalenko/dev/personal/httpsocketclient/build'
+# Server (UDP mode)
+$ ./httpfs -v --udp -p 8007 -d '/Users/tatumalenko/dev/personal/httpsocketclient/build' 
+
+# Client
 $ ./httpc help
 $ ./httpc post help
 $ ./httpc get -v -h 'Content-Type: application/json' -d '{ "Hey": "there" }' http://100.25.11.135/anything

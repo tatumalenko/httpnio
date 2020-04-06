@@ -1,4 +1,4 @@
-package httpnio.client;
+package httpnio.common;
 
 import httpnio.Const;
 import lombok.AllArgsConstructor;
@@ -18,12 +18,12 @@ import java.util.stream.Collectors;
 
 @AllArgsConstructor
 @Builder(toBuilder = true)
-public class Request {
-    private final HttpMethod method;
+public class HTTPRequest {
+    private final HTTPMethod method;
 
-    private final URL url;
+    private final InetLocation inetLocation;
 
-    private final URL routerAddress;
+    private final InetLocation routerAddress;
 
     private final Map<String, String> headers;
 
@@ -33,16 +33,16 @@ public class Request {
 
     private final File out;
 
-    public HttpMethod method() {
+    public HTTPMethod method() {
         return method;
     }
 
-    public URL url() {
-        return url;
+    public InetLocation url() {
+        return inetLocation;
     }
 
     public InetSocketAddress socketAddress() {
-        return url.socketAddress();
+        return inetLocation.socketAddress();
     }
 
     public InetSocketAddress routerAddress() {
@@ -50,11 +50,11 @@ public class Request {
     }
 
     public String host() {
-        return url.host();
+        return inetLocation.host();
     }
 
     public String path() {
-        return url.path() + (url.query() == null ? "" : "?" + url.query());
+        return inetLocation.path() + (inetLocation.query() == null ? "" : "?" + inetLocation.query());
     }
 
     public Map<String, String> headers() {
@@ -78,7 +78,7 @@ public class Request {
     }
 
     public static class Builder {
-        private HttpMethod method = null;
+        private HTTPMethod method = null;
         private String url = null;
         private String routerAddress = null;
         private List<String> headers = null;
@@ -86,7 +86,7 @@ public class Request {
         private String in = null;
         private String out = null;
 
-        public Builder method(final HttpMethod method) {
+        public Builder method(final HTTPMethod method) {
             this.method = method;
             return this;
         }
@@ -126,8 +126,8 @@ public class Request {
             return this;
         }
 
-        public Request build() throws RequestError, IOException {
-            if (method == HttpMethod.POST && body != null && in != null) {
+        public HTTPRequest build() throws RequestError, IOException {
+            if (method == HTTPMethod.POST && body != null && in != null) {
                 throw new RequestError("Fields body and in cannot be both specified.");
             }
 
@@ -156,10 +156,10 @@ public class Request {
                 }
             }
 
-            return new Request(
+            return new HTTPRequest(
                 method,
-                URL.fromSpec(url),
-                URL.fromSpec("localhost:3000"),
+                InetLocation.fromSpec(url),
+                InetLocation.fromSpec("localhost:3000"),
                 mappedHeaders,
                 body,
                 in != null ? new File(in) : null,
@@ -195,8 +195,8 @@ public class Request {
         return sb.toString();
     }
 
-    public static Request of(final String spec) throws RequestError {
-        final Builder requestBuilder = Request.builder();
+    public static HTTPRequest of(final String spec) throws RequestError {
+        final Builder requestBuilder = HTTPRequest.builder();
 
         int lineBreakCount = 0;
         int lineCount = 1;
@@ -213,7 +213,7 @@ public class Request {
                         "Parsing request method from spec failed. Make sure request follow HTTP 1.0 protocol spec.");
                 }
 
-                requestBuilder.method(HttpMethod.of(lexemes[0]));
+                requestBuilder.method(HTTPMethod.of(lexemes[0]));
                 path = lexemes[1];
             } else if (lineCount == 2) {
                 if (!line.contains("Host: ")) {
@@ -223,7 +223,7 @@ public class Request {
 
                 host = Pattern.compile("Host: (\\S+)").matcher(line).results().map(ee -> ee.group(1)).findFirst().orElse(null);
                 requestBuilder.url("http://" + host + path);
-            } else {
+            } else if (!line.trim().equalsIgnoreCase("")) {
                 headers.add(line.trim());
             }
 
@@ -255,5 +255,11 @@ public class Request {
 
     private void addHeaderIfAbsent(final StringBuilder sb, final String headerKey, final int headerValue) {
         addHeaderIfAbsent(sb, headerKey, Integer.toString(headerValue));
+    }
+
+    public static class RequestError extends Exception {
+        public RequestError(final String message) {
+            super(message);
+        }
     }
 }

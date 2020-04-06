@@ -1,7 +1,6 @@
-package httpnio.server;
+package httpnio.common;
 
 import httpnio.Const;
-import httpnio.client.Request;
 import io.vavr.Tuple;
 import io.vavr.Tuple2;
 import lombok.AllArgsConstructor;
@@ -22,10 +21,10 @@ import java.util.stream.Collectors;
 @Getter
 @Accessors(fluent = true)
 @Builder(toBuilder = true)
-public class Response {
+final public class HTTPResponse {
     private static final String STATUS_LINE_REGEX = "^HTTP/\\d.\\d (\\d+) (.*)$";
 
-    private Request request;
+    private HTTPRequest request;
 
     private String statusCode;
 
@@ -35,7 +34,7 @@ public class Response {
 
     private String body;
 
-    public Response(final Request request, final String messageHeader, final String messageBody) {
+    public HTTPResponse(final HTTPRequest request, final String messageHeader, final String messageBody) {
         this.request = request;
         body = messageBody;
         final var statusLine = Arrays.stream(messageHeader.split("\n"))
@@ -68,7 +67,7 @@ public class Response {
 
     }
 
-    public Response(final Request request, final String response) {
+    public HTTPResponse(final HTTPRequest request, final String response) {
         this(request, messageHeaderAndBody(response)._1(), messageHeaderAndBody(response)._2());
     }
 
