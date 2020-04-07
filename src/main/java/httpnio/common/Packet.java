@@ -208,13 +208,19 @@ public class Packet {
 
     @Override
     public String toString() {
+//        return String.format(
+//            "#%d peer=%s, router=%s, size=%d, \npayload=\n%s",
+//            sequenceNumber,
+//            Objects.requireNonNullElse(peerAddress, "null"),
+//            Objects.requireNonNullElse(routerAddress, "null"),
+//            Objects.requireNonNullElse(payload.length, 0),
+//            payload().substring(0, Math.min(20, payload().length())));
         return String.format(
-            "#%d peer=%s, router=%s, size=%d, \npayload=\n%s",
+            "(#%d, %s, %s, %dB)",
             sequenceNumber,
-            Objects.requireNonNullElse(peerAddress, "null"),
-            Objects.requireNonNullElse(routerAddress, "null"),
-            Objects.requireNonNullElse(payload.length, 0),
-            payload().substring(0, Math.min(20, payload().length())));
+            peerAddress != null ? peerAddress.getPort() : "null",
+            state != null ? state : "null",
+            payload != null ? payload.length : -1);
     }
 
     private void write(final ByteBuffer buffer) {

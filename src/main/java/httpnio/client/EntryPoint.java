@@ -15,6 +15,8 @@ import lombok.ToString;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
 
 @NoArgsConstructor
@@ -110,28 +112,28 @@ public class EntryPoint {
                     exec(success.get())
                         .onSuccess(response -> {
 
-//                            var whatToPrint = "";
-//                            if (success.get().verbose) {
-//                                whatToPrint += response.request();
-//                                whatToPrint += response.messageHeader();
-//                            }
-//                            whatToPrint += response.body();
-//
-//                            if (success.get().out != null) {
-//                                var whatToPrintInBytes = whatToPrint.getBytes();
-//                                Try.of(() -> Files.write(Paths.get(success.get().out), whatToPrintInBytes))
-//                                    .onSuccess(nothing -> System.out.println("Output saved in " + success.get().out))
-//                                    .onFailure(failure -> System.out.println(
-//                                        "Something went wrong trying to save the contents of the response to the file. " + failure.getClass()
-//                                            .getSimpleName() + ": " + failure.getMessage()));
-//                            } else {
-//                                //System.out.println(whatToPrint);
-//                            }
+                            var whatToPrint = "";
+                            if (success.get().verbose) {
+                                whatToPrint += response.request();
+                                whatToPrint += response.messageHeader();
+                            }
+                            whatToPrint += response.body();
+
+                            if (success.get().out != null) {
+                                var whatToPrintInBytes = whatToPrint.getBytes();
+                                Try.of(() -> Files.write(Paths.get(success.get().out), whatToPrintInBytes))
+                                    .onSuccess(nothing -> System.out.println("Output saved in " + success.get().out))
+                                    .onFailure(failure -> System.out.println(
+                                        "Something went wrong trying to save the contents of the response to the file. " + failure.getClass()
+                                            .getSimpleName() + ": " + failure.getMessage()));
+                            } else {
+                                System.out.println(whatToPrint);
+                            }
                         })
                         .onFailure(failure -> {
-//                            System.err.println(failure.getMessage());
-//                            System.err.println(parser.help());
-//                            System.exit(1);
+                            System.err.println(failure.getMessage());
+                            System.err.println(parser.help());
+                            System.exit(1);
                         });
                 }
             })

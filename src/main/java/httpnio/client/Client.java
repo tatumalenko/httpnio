@@ -162,12 +162,14 @@ public class Client {
         @Override
         public HTTPResponse call() {
             try {
-                handshake();
-                final boolean requestWasSent = pipeline(10);
-                if (!requestWasSent) {
-                    log.error("Request was not successfully sent to server");
+                if (!handshake()) {
+                    log.error("unable to handshake");
+                }
+
+                if (!pipeline(10)) {
+                    log.error("request was not successfully sent to server");
                 } else {
-                    log.info("Request was successfully sent to server!");
+                    log.info("request was successfully sent to server!");
                 }
 
                 return null; //new HTTPResponse(request, request.toString());
@@ -176,6 +178,7 @@ public class Client {
                 e.printStackTrace();
                 throw e;
             } finally {
+                log.info("closing connection");
                 channel.disconnect();
                 channel.close();
                 selector.close();
@@ -194,14 +197,14 @@ public class Client {
             if (packet.sequenceNumber() >= base
                 && packet.sequenceNumber() <= base + windowSize - 1
                 && !packet.is(ACKDATA)) {
-                log.warn("Packet was inside window but non-ACKDATA state was {}", packet.state());
+                log.warn("{} inside window but not ACKDATA", packet);
             }
             if (packet.sequenceNumber() >= base
                 && packet.sequenceNumber() <= base + windowSize - 1
                 && packet.is(ACKDATA)) {
-                log.info("Packet #{} in inside window and is ACKDATA", packet.sequenceNumber());
+                log.info("{} inside window and is ACKDATA", packet);
             } else {
-                log.info("Packet #{} in outside window and is {}", packet.sequenceNumber(), packet.state());
+                log.info("{} outside window and is {}", packet, packet.state());
             }
             return packet.sequenceNumber() >= base
                 && packet.sequenceNumber() <= base + windowSize - 1
@@ -210,13 +213,19 @@ public class Client {
 
         private void slideAndIncrementIfNeeded(final int index) {
             if (index >= packets.length) {
-                log.info("slideAndIncrementIfNeeded: index >= packets.length, returning");
+                log.info("index>=packets.length");
                 return;
             }
             if (index == base && packets[base].is(TRSM)) {
-                log.info("slideAndIncrementIfNeeded: index == base == {} && packets[base].is(TRSM), incrementing base", base);
+                log.info("index=base={} && packets[{}].is(TRSM) as expected, incrementing base", base, base);
                 base++;
                 slideAndIncrementIfNeeded(base);
+            } else if (index == base) {
+                log.warn(
+                    "can't slide because index=base={}, but packets[{}].state={}!=TRSM",
+                    base,
+                    index,
+                    packets[index].state());
             }
         }
 
@@ -225,8 +234,7 @@ public class Client {
             channel.read(buffer);
             buffer.flip();
             final Packet packet = Packet.of(buffer);
-            //log.info("Received packet: {}", packet);
-            log.info("Received packet: #{}, state: {}, size: {}", packet.sequenceNumber(), packet.state(), packet.payload().length());
+            log.info("received {}", packet);
             return packet;
         }
 
@@ -236,21 +244,16 @@ public class Client {
                 .routerAddress(request.routerAddress())
                 .build();
             channel.write(writablePacket.buffer());
-            log.info(
-                "Sent packet: #{}, state: {}, size: {}",
-                writablePacket.sequenceNumber(),
-                writablePacket.state(),
-                writablePacket.payload().length());
-            //log.info("Sent packet: {}", writablePacket);
+            log.info("sent {}", writablePacket);
         }
 
         private int wait(final int timeout) throws IOException {
-            log.info("Waiting for the response");
+            log.info("blocking up to {}ms for response", timeout);
             final int nReady = selector.select(timeout);
             final var keys = selector.selectedKeys();
 
             if (keys.isEmpty()) {
-                log.error("No response after timeout");
+                log.warn("no response after timeout");
             }
             keys.clear();
 
@@ -261,28 +264,54 @@ public class Client {
             return wait(transportProtocol.packetTimeoutMs());
         }
 
-        private void handshake() throws IOException {
+        private Packet readRetry(int attempts) throws IOException {
+            final int nReady = wait0();
+            return nReady > 0 ? read() : (attempts-- > 0 ? readRetry(attempts) : null);
+        }
+
+        private void writeRetry(int attempts, final Packet packet) throws IOException {
+            write(packet);
+            if (attempts-- > 0) {
+                writeRetry(attempts, packet);
+            }
+        }
+
+        private Packet readWriteRetry(int attempts, final Packet out) throws IOException {
+            writeRetry(0, out);
+            final Packet in = readRetry(0);
+            return in != null ? in : (attempts-- > 0 ? readWriteRetry(attempts, out) : null);
+        }
+
+        private boolean handshake() throws IOException {
+            log.info("initiating");
             final Packet synPacket = Packet.of()
                 .state(SYN)
                 .sequenceNumber(0)
                 .build();
 
             write(synPacket);
-            log.info("synPacket.is(SYN): {}", synPacket.is(SYN));
+            log.info("syn.is(SYN)={}", synPacket.is(SYN));
 
-            wait0();
+            Packet synAckPacket = readRetry(0);
+            synAckPacket = synAckPacket != null ? synAckPacket : readWriteRetry(3, synPacket);
 
-            final Packet synAckPacket = read();
-            log.info("synAckPacket.is(SYNACK): {}", synAckPacket.is(SYNACK));
+            if (synAckPacket != null) {
+                log.info("synack.is(SYNACK)={}", synAckPacket.is(SYNACK));
 
-            final Packet ackPacket = synAckPacket.builder()
-                .state(ACK)
-                .sequenceNumber(synAckPacket.sequenceNumber() + 1)
-                .build();
+                final Packet ackPacket = synAckPacket.builder()
+                    .state(ACK)
+                    .sequenceNumber(synAckPacket.sequenceNumber() + 1)
+                    .build();
 
-            write(ackPacket);
-            log.info("ackPacket.is(ACK): {}", ackPacket.is(ACK));
-            //log.info("buffersToString() == request.toString(): {}", Packet.of(request).buffersToString().equals(request.toString()));
+                writeRetry(0, ackPacket);
+                log.info("ack.is(ACK)={}", ackPacket.is(ACK));
+
+                return true;
+            } else {
+                log.error("unable to handshake, synack never received after 3 tries");
+                log.error("handshake");
+                return false;
+            }
         }
 
         private boolean pipeline(int remainingRetries) throws IOException {
@@ -291,14 +320,14 @@ public class Client {
             }
 
             if (base >= packets.length) {
-                log.info("pipeline: base >= packets.length, returning true");
+                log.info("base>=packets.length, returning true");
                 return true;
             }
 
-            log.info("base: {}, packets.length: {}", base, packets.length);
+            log.info("base={}, packets.length={}", base, packets.length);
             for (var i = base; i <= base + windowSize - 1; i++) {
                 if (i >= packets.length) {
-                    log.info("pipeline: i >= packets.length, returning true");
+                    log.info("i>=packets.length, returning true");
                     return true;
                 }
 
@@ -310,19 +339,18 @@ public class Client {
                 if (packets[i].is(BFRD)) {
                     write(packets[i]);
                 } else {
-                    log.info("pipeline: packets[i] != BFRD but instead: " + packets[i].state());
-                    log.info("pipeline: packets[i] = " + packets[i]);
+                    log.info("outgoing packets[{}]={} is expected tp be BFRD", i, packets[i]);
                 }
             }
 
             final var readAtLeastOnePacket = readWindow();
             if (readAtLeastOnePacket > 0) {
-                log.info("pipeline: readWindow() > 0, keep going!");
+                log.info("readWindow()>0, keep going!");
             } else if (readAtLeastOnePacket == -1) {
-                log.info("pipeline: readWindow() == -1, reached end of packet range! Returning true.");
+                log.info("readWindow()=-1, reached end of packet range, returning true");
                 return true;
             } else {
-                log.info("pipeline: readWindow() was not > 0 or == -1, decrementing retries.");
+                log.info("readWindow()<=0, decrementing retries={}", remainingRetries);
                 remainingRetries--;
             }
 
@@ -337,23 +365,28 @@ public class Client {
             while (readyLastIteration > 0) { // try read() to return null for fun
                 final var packet = read();
                 final int idx = index(packet);
+                log.info(
+                    "readWindow: processing {}, index(packet)={}, base={}",
+                    packet,
+                    idx,
+                    base);
 
                 if (inWindow(packet)) {
                     if (!packet.is(ACKDATA)) {
-                        log.warn("Expected read packet to be ACKDATA but was {}", packet.state());
+                        log.warn("expected {} within window to be ACKDATA", packet);
                     }
 
-                    log.info("Changing state of packet #{} from {} to {}", packet.sequenceNumber(), packet.state(), TRSM);
+                    log.info("changing state of {} to {}", packet, TRSM);
                     packets[idx] = packet.builder()
                         .state(TRSM)
                         .build();
 
                     slideAndIncrementIfNeeded(idx);
                 } else if (base >= packets.length) {
-                    log.warn("Base index greater than packets.length, all packets sent and acknowledged!");
+                    log.warn("base>=packets.length, returning -1 to indicate this");
                     return -1;
                 } else {
-                    log.warn("Received packet #{} outside window", packet.sequenceNumber());
+                    log.warn("received {} outside window", packet);
                 }
 
                 readyLastIteration = wait0();

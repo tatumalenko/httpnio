@@ -19,7 +19,7 @@ public class UDPSRProtocol implements TransportProtocol {
 
     @Override
     public int packetTimeoutMs() {
-        return 5000;
+        return 500;
     }
 
     @Override

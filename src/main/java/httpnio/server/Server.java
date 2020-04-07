@@ -6,8 +6,12 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -17,13 +21,17 @@ import java.nio.ByteOrder;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 import static httpnio.common.Packet.State.*;
 
 @SuppressWarnings("squid:S2189")
+@Slf4j
 public class Server {
 
     private final ExecutorService executorService = Executors.newFixedThreadPool(2);
@@ -32,13 +40,8 @@ public class Server {
 
     private final Server.Configuration configuration;
 
-    private static Server.Logger log;
-
     public Server(final Server.Configuration configuration) {
         this.configuration = configuration;
-        if (configuration.verbose()) {
-            log = new Logger("main-server-thread");
-        }
     }
 
     public synchronized void run() {
@@ -46,15 +49,15 @@ public class Server {
             return;
         }
 
-        log.debug("Starting server");
-        log.debug("Using port " + configuration.port());
+        log.info("starting server");
+        log.info("using port {}", configuration.port());
         try {
             final DatagramChannel channel = DatagramChannel.open();
             channel.configureBlocking(true);
             channel.socket().bind(new InetSocketAddress(configuration.port()));
             isRunning = true;
             new ServerThread(channel).start();
-            log.debug("Server started");
+            log.debug("server started");
         } catch (final IOException e) {
             log.error(e.getMessage());
             e.printStackTrace();
@@ -91,21 +94,19 @@ public class Server {
                     } else { // UDP
                         buffer.clear();
                         final SocketAddress client = channel.receive(buffer);
-
                         buffer.flip();
                         if (client != null) {
                             final Packet packet = Packet.of(buffer);
                             clientPacketQueueTable.putIfAbsent(client, new ArrayBlockingQueue<>(100));
                             final BlockingQueue<Packet> clientPacketQueue = Objects.requireNonNull(
                                 clientPacketQueueTable.get(client),
-                                "Client incoming packet queue should have been present in client table");
+                                "client incoming packet queue should have been present in client table");
                             clientPacketQueue.put(packet);
-
                             if (packet.is(SYN)) {
-                                log.debug(client + " wishes to establish connection");
+                                log.debug("{} wishes to establish connection", client);
                                 executorService.execute(handler(null, channel, client, clientPacketQueue));
                             } else {
-                                log.debug("Received packet was added to their respective queue");
+                                log.debug("received {} added to queue {}", packet, clientPacketQueue);
                             }
                         }
                     }
@@ -170,8 +171,6 @@ public class Server {
 
         private final Configuration configuration;
 
-        private Logger log;
-
         private int base;
 
         private final int windowSize;
@@ -198,7 +197,6 @@ public class Server {
         @SneakyThrows
         @Override
         public void run() {
-            log = new Logger(Server.log, Thread.currentThread().getName());
             packets = new ArrayList<>(Collections.nCopies(windowSize * 100, null));
             try {
                 configure();
@@ -206,22 +204,22 @@ public class Server {
 
                 if (successfulHandshake) {
                     final var request = readRetry();
-
                     if (request != null) {
-                        log.info("");
+                        log.info("request received, preparing response");
+                        final var response = applicationProtocol.response(request);
+                        log.info("response=\n{}", response.toString());
                     }
                 }
             } catch (final Exception e) {
-                e.printStackTrace(log.err);
-                log.error(e.getClass().getSimpleName() + ": " + e.getMessage());
+                log.error("{}: {}", e.getClass().getSimpleName(), e.getMessage());
             } finally {
-                log.debug("Disconnecting");
+                log.debug("disconnecting");
                 if (out.isConnected()) {
                     out.disconnect();
                 }
                 out.close();
                 selector.close();
-                log.debug("Exiting thread");
+                log.debug("exiting thread");
             }
         }
 
@@ -238,7 +236,7 @@ public class Server {
             final Packet synPacket = Objects.requireNonNull(
                 queue.poll(),
                 "synPacket should have been in client queue but none were found");
-            log.debug("Received synPacket: " + synPacket);
+            log.debug("received syn {}", synPacket);
 
             final Packet synAckPacket = synPacket.builder()
                 .state(SYNACK)
@@ -246,34 +244,22 @@ public class Server {
                 .build();
 
             out.write(synAckPacket.buffer());
-            log.debug("Sent synAckPacket: " + synAckPacket);
+            log.debug("sent synack {}", synAckPacket);
 
-            Packet ackPacket = queue.poll(1, TimeUnit.SECONDS);
-            final boolean badAckPacket = true;
+            final Packet ackPacket = queue.poll(500, TimeUnit.MILLISECONDS);
 
-            while (badAckPacket) {
-                if (ackPacket == null) {
-                    log.error("Did not receive a ackPacket after timeout");
-                } else if (!ackPacket.is(ACK)) {
-                    log.error("Received a packet but was not an ACK packet, will offer back to queue");
-                    final var offeredToQueue = queue.offer(ackPacket, 1, TimeUnit.SECONDS);
-                    log.info("Packet was successfully to queue: " + offeredToQueue);
-                } else {
-                    log.debug("Received ackPacket: " + ackPacket);
-                    log.debug("Connection established");
-                    break;
-                }
-                ackPacket = queue.poll(1, TimeUnit.SECONDS);
-            }
-
-            final var successfulHandshake = ackPacket != null && ackPacket.is(ACK);
-            if (successfulHandshake) {
-                log.info("Handshake successful!");
+            if (ackPacket == null) {
+                log.error("did not receive ack after timeout, assuming was sent");
+            } else if (!ackPacket.is(ACK)) {
+                log.error("received a packet but was not ack, will offer other packet back to queue");
+                final var offeredToQueue = queue.offer(ackPacket, 500, TimeUnit.MILLISECONDS);
+                log.info("{} was successfully to queue", offeredToQueue);
             } else {
-                log.error("Handshake was unsuccessful. Thread will exit.");
+                log.debug("received ackPacket {}", ackPacket);
+                log.debug("connection established");
             }
 
-            return successfulHandshake;
+            return true;
         }
 
         private int index(final Packet packet) {
@@ -302,20 +288,23 @@ public class Server {
         private void bufferIfNeeded(Packet packet) {
             if (shouldBuffer(packet)) {
                 if (!packet.is(BFRD)) {
-                    log.info("WARNING: Received packet should be in BFRD state, but was " + packet.state());
-                    log.info("Non BFRD packet: " + packet);
+                    log.info("received {} should have been in BFRD state, but was not", packet);
+                    log.info("non-BFRD {}", packet);
                 }
                 packet = packet.builder().state(BFRD).build();
                 final var index = index(packet);
                 final var bufferedPacket = packets.get(index);
                 if (bufferedPacket == null) {
                     packets.set(index, packet);
-                    log.info("Received packet was properly buffered: " + packet);
+                    log.info("{} received and properly buffered", packet);
                 } else {
-                    log.info("WARNING: Attempting to buffer packet but another packet was found at this index = " + index + "with state = " + bufferedPacket
-                        .state());
-                    log.info("Buffered packet: " + bufferedPacket);
-                    log.info("Received packet: " + packet);
+                    log.info(
+                        "attempting to buffer {} but another packet was found at this index={} with state={}",
+                        bufferedPacket,
+                        index,
+                        bufferedPacket.state());
+                    log.info("buffered {}", bufferedPacket);
+                    log.info("received {}", packet);
                 }
                 packets.set(index, packet);
             }
@@ -328,20 +317,19 @@ public class Server {
                     base++;
                     slideIfNeeded();
                 } else {
-                    log.info("WARNING: base packet was non-null and not in BFRD state, but was instead in " + packet.state());
-                    log.info("Non-null and non-BFRD packet: " + packet);
-                    log.info("WARNING: Incrementing base relunctantly to index = " + base + 1);
+                    log.info("{} is non-null but non-BFRD", packet);
+                    log.info("incrementing base (relunctantly) to index={}+1", base + 1);
                     base++;
                     slideIfNeeded();
                 }
             } else {
-                log.info("Packet at base (" + base + ") is still null, can't slide yet");
+                log.info("packets[{}=base]=null, can't slide yet", base);
             }
         }
 
         private Packet read(final int timeout) throws InterruptedException {
             final Packet packet = queue.poll(timeout, TimeUnit.MILLISECONDS);
-            log.info("Polled packet: " + packet);
+            log.info("polled {}", packet);
             return packet;
         }
 
@@ -349,22 +337,16 @@ public class Server {
             return read(transportProtocol.packetTimeoutMs());
         }
 
-        private Packet readNow() {
-            final Packet packet = queue.poll();
-            log.info("Polled packet instantly: " + packet);
-            return packet;
-        }
-
         private void write(final Packet packet) throws IOException {
             out.write(packet.buffer());
-            log.debug("Sent packet: " + packet);
+            log.info("sent {}", packet);
         }
 
-        private HTTPRequest readRetry(int remainingRetries) throws IOException, InterruptedException {
-            log.info("readRetry: remainingRetries = " + remainingRetries);
+        private HTTPRequest readRetry(int retries) throws IOException, InterruptedException {
+            log.info("retries={}", retries);
 
-            if (remainingRetries <= 0) {
-                log.info("readRetry: remainingRetries = 0. Returning null.");
+            if (retries <= 0) {
+                log.info("retries=0, returning null");
                 return null;
             }
 
@@ -372,32 +354,32 @@ public class Server {
 
             if (packet == null) {
                 log.info(
-                    "readRetry: next packet was null, decrementing remainingRetries and trying to make request with current packets buffered");
-                remainingRetries--;
+                    "next packet was null, decrementing retries={}, and trying to make request with current packets buffered", retries);
+                retries--;
 
                 final var request = makeRequest();
                 if (request != null) {
-                    log.info("readRetry: request returned is non-null, returning found request");
+                    log.info("request returned is non-null, returning found request");
                     return request;
                 }
             }
 
             while (packet != null) {
-                log.info("readRetry: read a packet");
+                log.info("reading {}", packet);
                 if (shouldAcknowledge(packet)) {
-                    log.info("readRetry: attempting to acknowledge packet");
+                    log.info("attempting to acknowledge {}", packet);
                     write(packet.builder().state(ACKDATA).build()); // Want to send ACKDATA but store BFRD
-                    log.info("readRetry: packet sent");
+                    log.info("sent ACKDATA version of {}", packet);
                 }
-                log.info("readRetry: bufferIdNeeded");
+                log.info("bufferIdNeeded");
                 bufferIfNeeded(packet);
-                log.info("readRetry: slideIfNeeded");
+                log.info("slideIfNeeded");
                 slideIfNeeded();
-                log.info("readRetry: reading next packet");
+                log.info("reading next packet");
                 packet = read();
             }
 
-            return readRetry(remainingRetries);
+            return readRetry(retries);
         }
 
         private HTTPRequest readRetry() throws IOException, InterruptedException {
@@ -409,15 +391,13 @@ public class Server {
             try {
                 final var request = HTTPRequest.of(combinedPayload);
                 if (request != null) {
-                    log.info("Request successfully created: " + request.toString().substring(0, Math.min(20, request.toString().length())));
+                    log.info("request successfully created");
                 } else {
-                    log.error("ERROR: Request returned null. Thread will exit.");
+                    log.error("request returned null, tread will exit");
                 }
                 return request;
             } catch (final Exception e) {
-                log.error("ERROR: Making request from combined payload. Returning null.");
-                log.error("Combined payload: " + combinedPayload);
-                log.error(e.getClass().getSimpleName() + ": " + e.getMessage());
+                log.error("{}: {}", e.getClass().getSimpleName(), e.getMessage());
                 return null;
             }
         }
@@ -433,8 +413,6 @@ public class Server {
 
         private final Server.Configuration configuration;
 
-        private Server.Logger log;
-
         public TCPHandler(
             final Socket socket,
             final Configuration configuration,
@@ -449,10 +427,9 @@ public class Server {
         @SneakyThrows
         @Override
         public void run() {
-            log = new Logger(Server.log, Thread.currentThread().getName());
             try (final PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
                  final BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-                log.debug("Connection accepted");
+                log.debug("connection accepted");
                 boolean keepAlive = true;
 
                 while (keepAlive) {
@@ -485,10 +462,10 @@ public class Server {
                         }
                     }
                     if (request != null) {
-                        log.debug("Request:");
+                        log.debug("request:");
                         log.debug(request.toString());
                         final String responseText = applicationProtocol.response(request).toString();
-                        log.debug("Response:");
+                        log.debug("response:");
                         log.debug(responseText);
                         out.print(responseText);
                         out.flush();
@@ -500,7 +477,7 @@ public class Server {
                             keepAlive = false;
                         }
                     } else {
-                        log.debug("Connection terminated");
+                        log.debug("connection terminated");
                         keepAlive = false;
                     }
                 }
@@ -538,47 +515,4 @@ public class Server {
             return Const.DEFAULT_THREAD_POOL_SIZE;
         }
     }
-
-    public static final class Logger {
-
-        private PrintStream out = System.out;
-
-        private PrintStream err = System.err;
-
-        private final String id;
-
-        public Logger(final PrintStream out, final PrintStream err, final String id) {
-            this.out = out;
-            this.err = err;
-            this.id = id;
-        }
-
-        public Logger(final String id) {
-            this.id = id;
-        }
-
-        public Logger(final Logger logger, final String id) {
-            this(logger.out, logger.err, id);
-        }
-
-        public void debug(final String text) {
-            if (out != null) {
-                out.println();
-                Arrays.stream(text.split("\n"))
-                    .forEach(line -> out.println(id + ": " + line));
-            }
-        }
-
-        public void info(final String text) {
-            debug(text);
-        }
-
-        public void error(final String text) {
-            if (err != null) {
-                err.println();
-                err.println(id + ": " + text);
-            }
-        }
-    }
-
 }
