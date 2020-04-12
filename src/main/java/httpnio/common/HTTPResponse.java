@@ -1,13 +1,13 @@
 package httpnio.common;
 
 import httpnio.Const;
-import io.vavr.Tuple;
-import io.vavr.Tuple2;
+import io.vavr.control.Either;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Arrays;
 import java.util.List;
@@ -16,13 +16,14 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@Slf4j
 @NoArgsConstructor
 @AllArgsConstructor
 @Getter
 @Accessors(fluent = true)
 @Builder(toBuilder = true)
 final public class HTTPResponse {
-    private static final String STATUS_LINE_REGEX = "^HTTP/\\d.\\d (\\d+) (.*)$";
+    private static final String STATUS_LINE_REGEX = "^HTTP/\\d.\\d (\\d+) (.*)\r?$";
 
     private HTTPRequest request;
 
@@ -64,23 +65,64 @@ final public class HTTPResponse {
                 System.err.println("Duplicate key found. Discarding value: " + value1);
                 return value2;
             }));
-
     }
 
-    public HTTPResponse(final HTTPRequest request, final String response) {
-        this(request, messageHeaderAndBody(response)._1(), messageHeaderAndBody(response)._2());
-    }
-
-    private static Tuple2<String, String> messageHeaderAndBody(final String response) {
+    public static Either<HTTPResponse, String> of(final HTTPRequest request, final String spec) {
         try {
-            final var lines = List.of(response.split("\n"));
-            final var lastLineOfHeaderIndex = response.indexOf("\n");
+            final var lines = List.of(spec.split(Const.CRLF));
+            final var lastLineOfHeaderIndex = indexOfBlankLine(spec);
+            if (lastLineOfHeaderIndex == -1) {
+                return Either.right("could not parse blank line in HTTP response");
+            }
             final var messageHeader = lines.subList(0, lastLineOfHeaderIndex);
             final var messageBody = lines.subList(lastLineOfHeaderIndex + 1, lines.size());
-            return Tuple.of(String.join("\n", messageHeader), String.join("\n", messageBody));
+            final var response = new HTTPResponse(request, String.join("\n", messageHeader), String.join("\n", messageBody));
+
+            final var isValid = response.valid();
+            return isValid.isLeft() ? Either.left(response) : Either.right(isValid.get());
         } catch (final Exception e) {
-            return Tuple.of("", response);
+            return Either.right("received IOException: " + e.getMessage());
         }
+    }
+
+    private static int indexOfBlankLine(final String text) {
+        final var lines = List.of(text.split("\n"));
+        for (var i = 0; i < lines.size(); i++) {
+            if (lines.get(i).equals("") || lines.get(i).equals("\r")) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public Either<Boolean, String> valid() {
+        if (statusCode == null) {
+            return Either.right("statusCode was null");
+        }
+
+        if (statusMessage == null) {
+            return Either.right("statusMessage was null");
+        }
+
+        if (headers == null) {
+            return Either.right("headers were null");
+        }
+
+        return validBody();
+    }
+
+    private Either<Boolean, String> validBody() {
+        if (headers != null) {
+            final var contentLength = headers.getOrDefault("Content-Length", "0");
+            final var bodyLength = String.valueOf(body != null ? body.length() : 0);
+            if (!contentLength.equals(bodyLength)) {
+                return Either.right(String.format(
+                    "Content-Length header value (%s) did not match body's length parsed (%s)",
+                    contentLength,
+                    bodyLength));
+            }
+        }
+        return Either.left(true);
     }
 
     public String statusLine() {
@@ -100,15 +142,21 @@ final public class HTTPResponse {
     @Override
     public String toString() {
         final var sb = new StringBuilder();
+        var contentLengthAdded = false;
 
         sb.append(String.format("HTTP/1.1 %s %s%s", statusCode, statusMessage, Const.CRLF));
 
         for (final var header : headers.entrySet()) {
             sb.append(String.format("%s: %s%s", header.getKey(), header.getValue(), Const.CRLF));
+            if (header.getKey().equalsIgnoreCase(Const.Headers.CONTENT_LENGTH)) {
+                contentLengthAdded = true;
+            }
         }
 
         if (body != null) {
-            sb.append(String.format("%s: %s%s", Const.Headers.CONTENT_LENGTH, body.length(), Const.CRLF));
+            if (!contentLengthAdded) {
+                sb.append(String.format("%s: %s%s", Const.Headers.CONTENT_LENGTH, body.length(), Const.CRLF));
+            }
             sb.append(Const.CRLF);
             sb.append(body);
         } else {

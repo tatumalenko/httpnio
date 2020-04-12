@@ -20,8 +20,6 @@ public interface ApplicationProtocol {
 
     interface Response extends ApplicationProtocol {
         HTTPResponse response(HTTPRequest request) throws IOException;
-
-
     }
 
     ApplicationProtocol copy() throws IllegalAccessException, IOException;

@@ -8,6 +8,7 @@ import io.vavr.control.Try;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -15,6 +16,7 @@ import java.net.MalformedURLException;
 import java.net.UnknownHostException;
 import java.util.Optional;
 
+@Slf4j
 @Getter
 @Accessors(fluent = true)
 @Builder(toBuilder = true)
@@ -69,7 +71,7 @@ public final class InetLocation {
 
     private static Either<java.net.URL, InetSocketAddress> tryUrlOrSocketAddress(final String spec) throws MalformedURLException {
         final Optional<Tuple2<String, String>> addressAndPortMaybe =
-            Optional.of(spec)
+            Optional.ofNullable(spec)
                 .map(s -> Tuple.of(
                     s.replaceAll(":\\d+", ""),
                     s.replaceAll("^((\\d+\\.)+\\d[.:]|(localhost:)|(\\S+:))", "")));

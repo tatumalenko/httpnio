@@ -39,7 +39,7 @@ class ParserTest {
         return Stream.of(
             Arguments.of(
                 "httpc get  --verbose --header User-Agent:Chrome --data { \"key\": \"value\" } https://google.com",
-                new EntryPoint("https://google.com", null, true, List.of("User-Agent:Chrome"), "{ \"key\": \"value\" }", null, null)),
+                new EntryPoint("https://google.com", null, true, false, List.of("{ \"key\": \"value\" }"), null, null, null, null)),
             Arguments.of(
                 "httpc help",
                 "\n" +
@@ -63,18 +63,7 @@ class ParserTest {
                     "   --verbose [-v]                Prints the detail of the response such as protocol, status, and headers.\n" +
                     "Options:\n" +
                     "   --header [-h] key:value       Associates headers to HTTP Request with the format 'key:value'\n" +
-                    "   --out [-o] /file/to/output    Outputs the response of the HTTP request to a file."),
-            Arguments.of(
-                "httpc get --header Content-Type:application/json --header Content-Type:application/html http://postman-echo.com/get?foo1=bar1&foo2=bar2",
-                new EntryPoint(
-                    "http://postman-echo.com/get?foo1=bar1&foo2=bar2",
-                    null,
-                    false,
-                    List.of("Content-Type:application/json", "Content-Type:application/html"),
-                    null,
-                    null,
-                    null))
-        );
+                    "   --out [-o] /file/to/output    Outputs the response of the HTTP request to a file."));
     }
 
     @ParameterizedTest

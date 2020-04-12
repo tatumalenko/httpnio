@@ -1,5 +1,9 @@
 package httpnio.common;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
 public interface TransportProtocol {
     enum Type {
         UDP,
@@ -28,16 +32,34 @@ public interface TransportProtocol {
         }
     }
 
-    int windowSize();
+    default int windowSize() {
+        return 5;
+    }
 
-    int maxPacketSize();
+    default int maxPacketSize() {
+        return Packet.MAX_LEN;
+    }
 
-    int minPacketSize();
+    default int minPacketSize() {
+        return Packet.MIN_LEN;
+    }
 
-    int packetTimeoutMs();
+    default int maxConsecutiveRetries() {
+        return 20;
+    }
 
-    void send();
+    default ByteBuffer emptyBuffer() {
+        return ByteBuffer
+            .allocateDirect(maxPacketSize())
+            .order(ByteOrder.BIG_ENDIAN);
+    }
 
-    void receive();
+    default int packetTimeoutMs() {
+        return 500;
+    }
+
+    boolean send(UDPSRProtocol.Agent sender, Packet[] packets) throws IOException, InterruptedException;
+
+    <T> T receive(UDPSRProtocol.Agent receiver) throws IOException, InterruptedException;
 }
 

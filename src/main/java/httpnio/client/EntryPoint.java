@@ -53,6 +53,14 @@ public class EntryPoint {
         description = "Prints the detail of the response such as protocol, status, and headers.")
     boolean verbose;
 
+    @Flag(
+        name = "udp",
+        alias = {"--udp"},
+        required = false,
+        subCommands = {"get", "post"},
+        description = "Uses a UDP Selective Repeat protocol instead of the default TCP protocol.")
+    boolean udp;
+
     @Option(
         name = "headers",
         alias = {"--header", "-h"},
@@ -98,6 +106,17 @@ public class EntryPoint {
         description = "Outputs the response of the HTTP request to a file.")
     String out;
 
+    @Option(
+        name = "path",
+        alias = {"--path", "-p"},
+        argument = @Argument(name = "path",
+            format = "/some/path.txt",
+            regex = "(.*)",
+            description = ""),
+        subCommands = {"get", "post"},
+        description = "Associates a path to the request when UDP is used.")
+    String path;
+
     public static void entryPoint(final String[] args) {
         final Parser<EntryPoint> parser = new Parser<>(EntryPoint.class);
         final Try<Either<String, EntryPoint>> result = parser.parse(String.join(" ", args));
@@ -111,15 +130,13 @@ public class EntryPoint {
                 if (success.isRight()) {
                     exec(success.get())
                         .onSuccess(response -> {
-
-                            var whatToPrint = "";
+                            var whatToPrint = "\n";
                             if (success.get().verbose) {
-                                whatToPrint += response.request();
-                                whatToPrint += response.messageHeader();
+                                whatToPrint += response != null && response.request() != null ? response.request() + "\n" : "";
+                                whatToPrint += response != null && response.request() != null ? response.messageHeader() : "\n\n";
                             }
-                            whatToPrint += response.body();
-
-                            if (success.get().out != null) {
+                            whatToPrint += response != null && response.request() != null ? "\n\n" + response.body() : "\n";
+                            if (success.get().out != null && response != null) {
                                 var whatToPrintInBytes = whatToPrint.getBytes();
                                 Try.of(() -> Files.write(Paths.get(success.get().out), whatToPrintInBytes))
                                     .onSuccess(nothing -> System.out.println("Output saved in " + success.get().out))
@@ -150,16 +167,39 @@ public class EntryPoint {
                 throw new ParseError("At least one of the possible sub-commands and a url must be specified.");
             }
 
+            var host = ep.get != null ? ep.get : ep.post;
+
+            if (ep.udp) {
+                if (host.startsWith("http")) {
+                    throw new ParseError("Invalid host url, do not specify an http:// prefix in UDP mode. Use the host address with " +
+                        "port such as 'localhost:8007'");
+                }
+            } else {
+                if (ep.path != null) {
+                    throw new ParseError("Invalid option specified. Do not specify the '-p'/'--path' option while in TCP mode. Use the " +
+                        "host path instead, such as 'http://localhost:80'");
+                }
+
+                if (!host.startsWith("http://") || !host.startsWith("https://")) {
+                    host = "http://" + host;
+                }
+            }
+
+            if (ep.get != null && ep.in != null) {
+                throw new ParseError("Only specify both the '-f'/'--file' option when making a GET request.");
+            }
+
             final var request = HTTPRequest.builder()
                 .method(ep.get != null ? HTTPMethod.GET : HTTPMethod.POST)
-                .url(ep.get != null ? ep.get : ep.post)
+                .url(host)
                 .headers(ep.headers)
                 .body(ep.data)
                 .in(ep.in)
                 .out(ep.out)
+                .path(ep.path)
                 .build();
 
-            return Try.of(() -> new Client(TransportProtocol.of(TransportProtocol.Type.of("UDP"))).request(request));
+            return Try.of(() -> new Client(TransportProtocol.of(TransportProtocol.Type.of(ep.udp ? "UDP" : "TCP"))).request(request));
         } catch (final ParseError e) {
             return Try.failure(e);
         } catch (final MalformedURLException e) {

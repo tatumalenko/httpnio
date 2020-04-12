@@ -41,6 +41,9 @@ public final class Parser<T> {
             lexemes.remove(0);
 
             if (lexemes.get(0).equals("help")) {
+                if (lexemes.size() > 1 && checker.isSubCommand(lexemes.get(1))) {
+                    return Either.left(checker.help(checker.subCommand(lexemes.get(1))));
+                }
                 return Either.left(checker.help());
             }
 
@@ -226,7 +229,7 @@ public final class Parser<T> {
         }
 
         String help() {
-            final String NAME_DESCRIPTION_TEMPLATE = "   %-20s%s%n";
+            final String NAME_DESCRIPTION_TEMPLATE = "   %-30s%s%n";
             final var sb = new StringBuilder();
             sb.append(String.format("%n"));
             sb.append(String.format("%s: %s%n", command.name(), command.description()));
@@ -243,27 +246,33 @@ public final class Parser<T> {
 
             if (!flags.isEmpty()) {
                 if (flags.stream().anyMatch(e -> e.subCommands().length == 0)) {
-                    sb.append(String.format("\nThe flags are:%n"));
+                    sb.append(String.format("\nThe flags are:"));
                 }
                 for (final var flag : flags) {
                     if (flag.subCommands().length == 0) {
-                        sb.append(String.format(NAME_DESCRIPTION_TEMPLATE, flag.name(), flag.description()));
+                        sb.append(String.format(
+                            "%n   %-30s%s",
+                            flag.alias()[0] + (flag.alias().length > 1 ? " [" + flag.alias()[1] + "]" : ""),
+                            flag.description()));
                     }
                 }
             }
 
             if (!options.isEmpty()) {
                 if (options.stream().anyMatch(e -> e.subCommands().length == 0)) {
-                    sb.append(String.format("\nThe options are:%n"));
+                    sb.append(String.format("\nThe options are:"));
                 }
                 for (final var option : options) {
                     if (option.subCommands().length == 0) {
-                        sb.append(String.format(NAME_DESCRIPTION_TEMPLATE, option.name(), option.description()));
+                        sb.append(String.format(
+                            "%n   %-30s%s",
+                            option.alias()[0] + " [" + option.alias()[1] + "] " + option.argument().format(),
+                            option.description()));
                     }
                 }
             }
 
-            sb.append(String.format("   %-20sPrints this output.%n", "help"));
+            sb.append(String.format("%n   %-30s%s", "help", "Prints this message."));
 
             if (subCommands.stream().filter(e -> !e.name().equalsIgnoreCase("help")).count() > 0) {
                 sb.append(String.format("\nUse \"%s help <subCommand>\" for more information about a subCommand", command.name()));
@@ -290,7 +299,10 @@ public final class Parser<T> {
                 subCommand.argument().name()));
             sb.append(String.format("%nFlags:"));
             for (final var validFlag : validFlags) {
-                sb.append(String.format("%n   %-30s%s", validFlag.alias()[0] + " [" + validFlag.alias()[1] + "]", validFlag.description()));
+                sb.append(String.format(
+                    "%n   %-30s%s",
+                    validFlag.alias()[0] + (validFlag.alias().length > 1 ? " [" + validFlag.alias()[1] + "]" : ""),
+                    validFlag.description()));
             }
             sb.append(String.format("%nOptions:"));
             for (final var validOption : validOptions) {

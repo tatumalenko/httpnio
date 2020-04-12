@@ -1,8 +1,10 @@
 package httpnio.common;
 
 import httpnio.Const;
+import io.vavr.control.Either;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,6 +18,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@Slf4j
 @AllArgsConstructor
 @Builder(toBuilder = true)
 public class HTTPRequest {
@@ -32,6 +35,8 @@ public class HTTPRequest {
     private final File in;
 
     private final File out;
+
+    private final String path;
 
     public HTTPMethod method() {
         return method;
@@ -54,7 +59,16 @@ public class HTTPRequest {
     }
 
     public String path() {
-        return inetLocation.path() + (inetLocation.query() == null ? "" : "?" + inetLocation.query());
+        if (path == null) {
+            return inetLocation.path() + (inetLocation.query() == null ? "" : "?" + inetLocation.query());
+        } else {
+            final var tryPath = inetLocation.path() + (inetLocation.query() == null ? "" : "?" + inetLocation.query());
+            if (!tryPath.equals("")) {
+                return inetLocation.path() + (inetLocation.query() == null ? "" : "?" + inetLocation.query());
+            } else {
+                return path;
+            }
+        }
     }
 
     public Map<String, String> headers() {
@@ -85,6 +99,18 @@ public class HTTPRequest {
         private String body = null;
         private String in = null;
         private String out = null;
+        private String spec = null;
+        private String path = null;
+
+        public Builder path(final String path) {
+            this.path = path;
+            return this;
+        }
+
+        public Builder spec(final String spec) {
+            this.spec = spec;
+            return this;
+        }
 
         public Builder method(final HTTPMethod method) {
             this.method = method;
@@ -159,11 +185,12 @@ public class HTTPRequest {
             return new HTTPRequest(
                 method,
                 InetLocation.fromSpec(url),
-                InetLocation.fromSpec("localhost:3000"),
+                InetLocation.fromSpec(Const.DEFAULT_ROUTER_ADDRESS),
                 mappedHeaders,
                 body,
                 in != null ? new File(in) : null,
-                out != null ? new File(out) : null);
+                out != null ? new File(out) : null,
+                path);
         }
     }
 
@@ -195,8 +222,9 @@ public class HTTPRequest {
         return sb.toString();
     }
 
-    public static HTTPRequest of(final String spec) throws RequestError {
+    public static Either<HTTPRequest, String> of(final String spec) throws RequestError {
         final Builder requestBuilder = HTTPRequest.builder();
+        requestBuilder.spec(spec);
 
         int lineBreakCount = 0;
         int lineCount = 1;
@@ -209,21 +237,17 @@ public class HTTPRequest {
             if (lineCount == 1) {
                 final String[] lexemes = line.split("\\s+");
                 if (lexemes.length != 3) {
-                    throw new IllegalStateException(
-                        "Parsing request method from spec failed. Make sure request follow HTTP 1.0 protocol spec.");
+                    return Either.right("First line of HTTP request did not contain 3 space delimited lexemes: " + line);
                 }
-
                 requestBuilder.method(HTTPMethod.of(lexemes[0]));
                 path = lexemes[1];
             } else if (lineCount == 2) {
                 if (!line.contains("Host: ")) {
-                    throw new IllegalStateException(
-                        "Parsing request host from spec failed. Make sure request follow HTTP 1.0 protocol spec.");
+                    return Either.right("Second line of HTTP request did not contain 'Host: ..' information");
                 }
-
                 host = Pattern.compile("Host: (\\S+)").matcher(line).results().map(ee -> ee.group(1)).findFirst().orElse(null);
                 requestBuilder.url("http://" + host + path);
-            } else if (!line.trim().equalsIgnoreCase("")) {
+            } else if (!line.trim().equalsIgnoreCase("") && lineBreakCount == 0) {
                 headers.add(line.trim());
             }
 
@@ -241,10 +265,42 @@ public class HTTPRequest {
         }
 
         try {
-            return requestBuilder.build();
+            final var request = requestBuilder.build();
+            final var isValid = request.valid();
+            return isValid.isLeft() ? Either.left(request) : Either.right(isValid.get());
         } catch (final IOException e) {
-            throw new RequestError("IOException: " + e.getMessage());
+            return Either.right("received IOException: " + e.getMessage());
         }
+    }
+
+    public Either<Boolean, String> valid() {
+        if (url().path() == null) {
+            return Either.right("url.path was null");
+        }
+
+        if (method == null) {
+            return Either.right("method was null");
+        }
+
+        if (headers == null) {
+            return Either.right("headers were null");
+        }
+
+        return validBody();
+    }
+
+    private Either<Boolean, String> validBody() {
+        if (method() == HTTPMethod.POST && headers != null) {
+            final var contentLength = headers.getOrDefault("Content-Length", "0");
+            final var bodyLength = String.valueOf(body != null ? body.length() : 0);
+            if (!contentLength.equals(bodyLength)) {
+                return Either.right(String.format(
+                    "Content-Length header value (%s) did not match body's length parsed (%s)",
+                    contentLength,
+                    bodyLength));
+            }
+        }
+        return Either.left(true);
     }
 
     private void addHeaderIfAbsent(final StringBuilder sb, final String headerKey, final String headerValue) {

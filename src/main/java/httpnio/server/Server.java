@@ -12,17 +12,12 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.SocketAddress;
+import java.net.*;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.nio.channels.ServerSocketChannel;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.*;
@@ -34,7 +29,7 @@ import static httpnio.common.Packet.State.*;
 @Slf4j
 public class Server {
 
-    private final ExecutorService executorService = Executors.newFixedThreadPool(2);
+    private final ExecutorService executorService;
 
     private volatile boolean isRunning = false;
 
@@ -42,6 +37,7 @@ public class Server {
 
     public Server(final Server.Configuration configuration) {
         this.configuration = configuration;
+        executorService = Executors.newFixedThreadPool(configuration.threadPoolSize());
     }
 
     public synchronized void run() {
@@ -52,11 +48,8 @@ public class Server {
         log.info("starting server");
         log.info("using port {}", configuration.port());
         try {
-            final DatagramChannel channel = DatagramChannel.open();
-            channel.configureBlocking(true);
-            channel.socket().bind(new InetSocketAddress(configuration.port()));
             isRunning = true;
-            new ServerThread(channel).start();
+            new ServerThread().start();
             log.debug("server started");
         } catch (final IOException e) {
             log.error(e.getMessage());
@@ -72,37 +65,53 @@ public class Server {
 
         private final ConcurrentHashMap<SocketAddress, BlockingQueue<Packet>> clientPacketQueueTable = new ConcurrentHashMap<>();
 
-        private final DatagramChannel channel;
+        private DatagramChannel channel;
 
-        private final ByteBuffer buffer;
+        private ServerSocketChannel tcpChannel;
 
-        ServerThread(final DatagramChannel channel) {
-            super("connection-listener-thread");
-            this.channel = channel;
-            buffer = transportProtocol() != null ?
-                ByteBuffer.allocateDirect(transportProtocol().maxPacketSize())
-                    .order(ByteOrder.BIG_ENDIAN) : null;
+        private ByteBuffer buffer;
+
+        ServerThread() throws IOException {
+            super("listener-thread");
+
+            log.debug("starting server with listener thread");
+
+            if (configuration.transportProtocolType == TransportProtocol.Type.TCP) {
+                tcpChannel = ServerSocketChannel.open();
+                tcpChannel.bind(new InetSocketAddress(configuration.port()));
+            } else {
+                final var selector = Selector.open();
+                channel = DatagramChannel.open();
+                channel.configureBlocking(false);
+                channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+                channel.bind(new InetSocketAddress(configuration.port()));
+                buffer = transportProtocol().emptyBuffer();
+            }
         }
 
         @Override
         public void run() {
             while (isRunning) {
                 try {
-                    if (buffer == null) { // TCP
-                        final Socket socket = new ServerSocket(configuration.port()).accept();
-                        executorService.execute(handler(socket, null, null, null));
+                    if (configuration.transportProtocolType == TransportProtocol.Type.TCP) { // TCP
+                        executorService.execute(handler(tcpChannel.socket().accept(), null, null, null));
                     } else { // UDP
                         buffer.clear();
-                        final SocketAddress client = channel.receive(buffer);
+                        final SocketAddress router = channel.receive(buffer);
                         buffer.flip();
-                        if (client != null) {
+                        if (router != null) {
                             final Packet packet = Packet.of(buffer);
-                            clientPacketQueueTable.putIfAbsent(client, new ArrayBlockingQueue<>(100));
+                            final var client = packet.peerAddress();
+                            log.debug("incoming packet={}", packet);
+                            log.debug("client={}", client);
+
+                            final var existingQueue = clientPacketQueueTable.putIfAbsent(client, new ArrayBlockingQueue<>(100));
                             final BlockingQueue<Packet> clientPacketQueue = Objects.requireNonNull(
                                 clientPacketQueueTable.get(client),
                                 "client incoming packet queue should have been present in client table");
+
                             clientPacketQueue.put(packet);
-                            if (packet.is(SYN)) {
+                            if (packet.is(SYN) && existingQueue == null) {
                                 log.debug("{} wishes to establish connection", client);
                                 executorService.execute(handler(null, channel, client, clientPacketQueue));
                             } else {
@@ -153,15 +162,13 @@ public class Server {
         }
     }
 
-    private static class UDPHandler implements Runnable {
+    private static class UDPHandler implements Runnable, UDPSRProtocol.Agent {
 
         DatagramChannel channel;
 
-        DatagramChannel out;
-
         Selector selector;
 
-        SocketAddress client;
+        InetSocketAddress client;
 
         BlockingQueue<Packet> queue;
 
@@ -171,12 +178,9 @@ public class Server {
 
         private final Configuration configuration;
 
-        private int base;
+        private final InetSocketAddress router;
 
-        private final int windowSize;
-
-        private List<Packet> packets;
-
+        @SneakyThrows
         public UDPHandler(
             final DatagramChannel channel,
             final SocketAddress client,
@@ -185,28 +189,39 @@ public class Server {
             final TransportProtocol transportProtocol,
             final ApplicationProtocol.Response applicationProtocol) {
             this.channel = channel;
-            this.client = client;
+            this.client = (InetSocketAddress) client;
             this.queue = queue;
             this.transportProtocol = transportProtocol;
             this.applicationProtocol = applicationProtocol;
             this.configuration = configuration;
-            base = 0;
-            windowSize = transportProtocol.windowSize();
+            router = configuration.router();
         }
 
         @SneakyThrows
         @Override
         public void run() {
-            packets = new ArrayList<>(Collections.nCopies(windowSize * 100, null));
             try {
                 configure();
-                final boolean successfulHandshake = handshake();
-
-                if (successfulHandshake) {
-                    final var request = readRetry();
+                if (handshake()) {
+                    final HTTPRequest request = transportProtocol.receive(this);
                     if (request != null) {
                         log.info("request received, preparing response");
                         final var response = applicationProtocol.response(request);
+                        final var buffers = PacketUtil.split(response.toString().getBytes());
+                        final var packets = new Packet[buffers.length];
+                        for (int i = 0; i < buffers.length; i++) {
+                            packets[i] = Packet.builder()
+                                .state(BFRD)
+                                .sequenceNumber(i)
+                                .peerAddress(client)
+                                .payload(buffers[i].array())
+                                .build();
+                        }
+                        if (transportProtocol.send(this, packets)) {
+                            log.info("response sent!");
+                        } else {
+                            log.error("unable to confirm response delivery after {} attempts", transportProtocol.maxConsecutiveRetries());
+                        }
                         log.info("response=\n{}", response.toString());
                     }
                 }
@@ -214,10 +229,6 @@ public class Server {
                 log.error("{}: {}", e.getClass().getSimpleName(), e.getMessage());
             } finally {
                 log.debug("disconnecting");
-                if (out.isConnected()) {
-                    out.disconnect();
-                }
-                out.close();
                 selector.close();
                 log.debug("exiting thread");
             }
@@ -225,11 +236,7 @@ public class Server {
 
         private void configure() throws IOException {
             selector = Selector.open();
-            out = DatagramChannel.open();
-            out.configureBlocking(false);
-            out.connect(client);
-            out.register(selector, SelectionKey.OP_READ);
-            out.socket().setSoTimeout(1000);
+            channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
         }
 
         private boolean handshake() throws InterruptedException, IOException {
@@ -238,22 +245,40 @@ public class Server {
                 "synPacket should have been in client queue but none were found");
             log.debug("received syn {}", synPacket);
 
-            final Packet synAckPacket = synPacket.builder()
+            final Packet synAckPacket = synPacket.toBuilder()
                 .state(SYNACK)
-                .sequenceNumber(synPacket.sequenceNumber() + 1)
+                .sequenceNumber(1)
+                .peerAddress(client)
                 .build();
 
-            out.write(synAckPacket.buffer());
+            write(synAckPacket);
             log.debug("sent synack {}", synAckPacket);
 
-            final Packet ackPacket = queue.poll(500, TimeUnit.MILLISECONDS);
+            final Packet ackPacket = queue.poll(transportProtocol.packetTimeoutMs(), TimeUnit.MILLISECONDS);
 
             if (ackPacket == null) {
                 log.error("did not receive ack after timeout, assuming was sent");
             } else if (!ackPacket.is(ACK)) {
-                log.error("received a packet but was not ack, will offer other packet back to queue");
-                final var offeredToQueue = queue.offer(ackPacket, 500, TimeUnit.MILLISECONDS);
-                log.info("{} was successfully to queue", offeredToQueue);
+                var packet = ackPacket;
+                if (packet.is(SYN)) {
+                    while (packet != null && packet.is(SYN)) {
+                        log.warn("received again syn {}", packet);
+                        write(packet.toBuilder().state(SYNACK).build());
+                        log.debug("sent synack {}", synAckPacket);
+                        packet = queue.poll(transportProtocol.packetTimeoutMs(), TimeUnit.MILLISECONDS);
+                    }
+                    if (packet == null) {
+                        log.error("did not receive ack after timeout, assuming was sent");
+                    } else {
+                        log.error("received a packet but was not ack, will offer other packet back to queue");
+                        final var offeredToQueue = queue.offer(ackPacket, transportProtocol.packetTimeoutMs(), TimeUnit.MILLISECONDS);
+                        log.info("{} was successfully to queue", offeredToQueue);
+                    }
+                } else {
+                    log.error("received a packet but was not ack, will offer other packet back to queue");
+                    final var offeredToQueue = queue.offer(ackPacket, transportProtocol.packetTimeoutMs(), TimeUnit.MILLISECONDS);
+                    log.info("{} was successfully to queue", offeredToQueue);
+                }
             } else {
                 log.debug("received ackPacket {}", ackPacket);
                 log.debug("connection established");
@@ -262,142 +287,43 @@ public class Server {
             return true;
         }
 
-        private int index(final Packet packet) {
-            // Should wrap around seqNum space
-            return packet == null ? -1 : (int) packet.sequenceNumber();
-        }
-
-        private boolean inWindow(final Packet packet) {
-            final var index = index(packet);
-            return index >= base && index < base + windowSize - 1;
-        }
-
-        private boolean alreadyAcknowledged(final Packet packet) {
-            final var index = index(packet);
-            return index >= base - windowSize && index <= base - 1;
-        }
-
-        private boolean shouldAcknowledge(final Packet packet) {
-            return alreadyAcknowledged(packet) || inWindow(packet);
-        }
-
-        private boolean shouldBuffer(final Packet packet) {
-            return inWindow(packet);
-        }
-
-        private void bufferIfNeeded(Packet packet) {
-            if (shouldBuffer(packet)) {
-                if (!packet.is(BFRD)) {
-                    log.info("received {} should have been in BFRD state, but was not", packet);
-                    log.info("non-BFRD {}", packet);
-                }
-                packet = packet.builder().state(BFRD).build();
-                final var index = index(packet);
-                final var bufferedPacket = packets.get(index);
-                if (bufferedPacket == null) {
-                    packets.set(index, packet);
-                    log.info("{} received and properly buffered", packet);
-                } else {
-                    log.info(
-                        "attempting to buffer {} but another packet was found at this index={} with state={}",
-                        bufferedPacket,
-                        index,
-                        bufferedPacket.state());
-                    log.info("buffered {}", bufferedPacket);
-                    log.info("received {}", packet);
-                }
-                packets.set(index, packet);
-            }
-        }
-
-        private void slideIfNeeded() {
-            final var packet = packets.get(base);
-            if (packet != null) {
-                if (packet.is(BFRD)) {
-                    base++;
-                    slideIfNeeded();
-                } else {
-                    log.info("{} is non-null but non-BFRD", packet);
-                    log.info("incrementing base (relunctantly) to index={}+1", base + 1);
-                    base++;
-                    slideIfNeeded();
-                }
-            } else {
-                log.info("packets[{}=base]=null, can't slide yet", base);
-            }
-        }
-
         private Packet read(final int timeout) throws InterruptedException {
+            log.info("blocking up to {}ms for response", timeout);
             final Packet packet = queue.poll(timeout, TimeUnit.MILLISECONDS);
             log.info("polled {}", packet);
             return packet;
         }
 
-        private Packet read() throws InterruptedException {
+        @Override
+        public Packet read() throws InterruptedException {
             return read(transportProtocol.packetTimeoutMs());
         }
 
-        private void write(final Packet packet) throws IOException {
-            out.write(packet.buffer());
+        @Override
+        public void write(final Packet packet) throws IOException {
             log.info("sent {}", packet);
+            channel.send(packet.buffer(), router);
         }
 
-        private HTTPRequest readRetry(int retries) throws IOException, InterruptedException {
-            log.info("retries={}", retries);
-
-            if (retries <= 0) {
-                log.info("retries=0, returning null");
-                return null;
-            }
-
-            var packet = read();
-
-            if (packet == null) {
-                log.info(
-                    "next packet was null, decrementing retries={}, and trying to make request with current packets buffered", retries);
-                retries--;
-
-                final var request = makeRequest();
-                if (request != null) {
-                    log.info("request returned is non-null, returning found request");
-                    return request;
-                }
-            }
-
-            while (packet != null) {
-                log.info("reading {}", packet);
-                if (shouldAcknowledge(packet)) {
-                    log.info("attempting to acknowledge {}", packet);
-                    write(packet.builder().state(ACKDATA).build()); // Want to send ACKDATA but store BFRD
-                    log.info("sent ACKDATA version of {}", packet);
-                }
-                log.info("bufferIdNeeded");
-                bufferIfNeeded(packet);
-                log.info("slideIfNeeded");
-                slideIfNeeded();
-                log.info("reading next packet");
-                packet = read();
-            }
-
-            return readRetry(retries);
-        }
-
-        private HTTPRequest readRetry() throws IOException, InterruptedException {
-            return readRetry(10);
-        }
-
-        private HTTPRequest makeRequest() {
-            final var combinedPayload = packets.stream().filter(Objects::nonNull).map(Packet::payload).collect(Collectors.joining(""));
+        @Override
+        public <T> T make(final List<Packet> packets) {
+            final var combinedPayload = packets.stream()
+                .filter(Objects::nonNull)
+                .map(Packet::payload)
+                .collect(Collectors.joining(""));
             try {
                 final var request = HTTPRequest.of(combinedPayload);
-                if (request != null) {
+                if (request.isLeft()) {
                     log.info("request successfully created");
+                    return (T) request.getLeft();
                 } else {
-                    log.error("request returned null, tread will exit");
+                    log.error("request invalid: {}", request.get());
+                    log.info("\nrequest: \n{}", combinedPayload);
+                    return null;
                 }
-                return request;
             } catch (final Exception e) {
                 log.error("{}: {}", e.getClass().getSimpleName(), e.getMessage());
+                log.debug("request: \n{}", combinedPayload);
                 return null;
             }
         }
@@ -431,6 +357,7 @@ public class Server {
                  final BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
                 log.debug("connection accepted");
                 boolean keepAlive = true;
+                int contentLength = 0;
 
                 while (keepAlive) {
                     HTTPRequest request = null;
@@ -441,26 +368,30 @@ public class Server {
                         requestBuilder.append(line);
                         requestBuilder.append(Const.CRLF);
 
-                        if (line.equalsIgnoreCase("")) {
-                            request = HTTPRequest.of(requestBuilder.toString());
+                        if (line.toLowerCase().contains(Const.Headers.CONTENT_LENGTH.toLowerCase())) {
+                            final var keyValue = line.split(":");
+                            contentLength = Integer.parseInt(keyValue[1].trim());
+                        }
 
-                            if (request.headers().containsKey(Const.Headers.CONTENT_LENGTH)) {
-                                final StringBuilder body = new StringBuilder();
-                                final int contentLength = Integer.parseInt(request.headers().get(Const.Headers.CONTENT_LENGTH));
-                                for (var i = 0; i < contentLength; i++) {
-                                    body.append((char) in.read());
-                                }
-                                request = HTTPRequest.builder()
-                                    .url(request.url().toString())
-                                    .method(request.method())
-                                    .headers(request.headers())
-                                    .body(body.toString())
-                                    .build();
+                        log.debug("line: {}", line);
+                        if (line.equalsIgnoreCase("")) {
+                            for (var i = 0; i < contentLength; i++) {
+                                requestBuilder.append((char) in.read());
                             }
 
                             break;
                         }
                     }
+
+                    log.debug("builder: {}", requestBuilder.toString());
+                    final var requestAttempt = HTTPRequest.of(requestBuilder.toString());
+
+                    if (requestAttempt.isLeft()) {
+                        request = requestAttempt.getLeft();
+                    } else {
+                        throw new HTTPRequest.RequestError(requestAttempt.get());
+                    }
+
                     if (request != null) {
                         log.debug("request:");
                         log.debug(request.toString());
@@ -483,10 +414,6 @@ public class Server {
                 }
             } catch (final IOException | HTTPRequest.RequestError e) {
                 e.printStackTrace();
-            } finally {
-                if (!socket.isClosed()) {
-                    socket.close();
-                }
             }
         }
     }
@@ -509,6 +436,10 @@ public class Server {
             return port == 0 || port == -1
                 ? Const.DEFAULT_SERVER_PORT
                 : port;
+        }
+
+        public final InetSocketAddress router() throws UnknownHostException {
+            return new InetSocketAddress(InetAddress.getByName(Const.DEFAULT_ROUTER_HOST), Const.DEFAULT_ROUTER_PORT);
         }
 
         public final int threadPoolSize() {
